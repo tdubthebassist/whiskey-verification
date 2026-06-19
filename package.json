@@ -1,0 +1,13 @@
+{
+  "name": "whiskey-verification",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd admin && npm install && npm run build && cd .. && node scripts/prepare-dist.js",
+    "start": "npx serve dist -l $PORT -s",
+    "dev": "cd admin && npm run dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
