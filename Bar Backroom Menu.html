@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0a0807" />
+<title>벽돌 너머, 숨겨둔 한 잔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Nanum+Myeongjo:wght@400;700;800&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=Song+Myung&family=Gowun+Batang:wght@400;700&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: #0a0807;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    color: #fff;
+  }
+  #app { width: 100%; height: 100%; }
+
+  /* ===================== THEME TOKENS ===================== */
+  .screen {
+    position: relative; width: 100%; height: 100%;
+    color: var(--ink);
+    background: var(--bg);
+    overflow: hidden;
+  }
+  /* — CELLAR — */
+  [data-theme="cellar"] {
+    --bg: #17130f;
+    --glow: radial-gradient(80% 60% at 50% -8%, rgba(201,138,60,0.20), transparent 60%);
+    --panel: #1d1712; --panel-2: #241c15;
+    --ink: #ece0cd; --ink-soft: #b8aa90; --ink-mute: #837763;
+    --line: rgba(221,201,166,0.13); --line-strong: rgba(221,201,166,0.26);
+    --accent: #cd924a; --accent-soft: #e3b87a;
+    --chip-on: #cd924a; --chip-on-ink: #1a130c;
+    --font-disp: "Cormorant Garamond","Nanum Myeongjo",serif;
+    --font-body: "Nanum Myeongjo","Cormorant Garamond",serif;
+    --font-label: "Cormorant Garamond","Nanum Myeongjo",serif;
+    --font-num: "Cormorant Garamond",serif;
+    --label-tr: 0.18em; --label-tt: uppercase;
+  }
+  /* — HI-FI — */
+  [data-theme="hifi"] {
+    --bg: #100d0b;
+    --glow: radial-gradient(70% 55% at 50% -6%, rgba(227,164,74,0.22), transparent 62%);
+    --panel: #171310; --panel-2: #1d1814;
+    --ink: #e9e2d6; --ink-soft: #a39a89; --ink-mute: #71695b;
+    --line: rgba(227,164,74,0.16); --line-strong: rgba(227,164,74,0.34);
+    --accent: #e3a44a; --accent-soft: #f0c382;
+    --chip-on: #e3a44a; --chip-on-ink: #140f09;
+    --font-disp: "Space Grotesk","IBM Plex Sans KR",sans-serif;
+    --font-body: "IBM Plex Sans KR","Space Grotesk",sans-serif;
+    --font-label: "Space Mono","IBM Plex Sans KR",monospace;
+    --font-num: "Space Mono",monospace;
+    --label-tr: 0.22em; --label-tt: uppercase;
+  }
+  /* — BRASS — */
+  [data-theme="brass"] {
+    --bg: #1a1510;
+    --glow: radial-gradient(80% 60% at 50% -8%, rgba(185,138,77,0.18), transparent 60%);
+    --panel: #221b14; --panel-2: #2a2118;
+    --ink: #efe4d2; --ink-soft: #bbab92; --ink-mute: #897b63;
+    --line: rgba(212,180,134,0.16); --line-strong: rgba(212,180,134,0.34);
+    --accent: #bf9152; --accent-soft: #dcb574;
+    --chip-on: #bf9152; --chip-on-ink: #1a130b;
+    --font-disp: "Song Myung","Gowun Batang",serif;
+    --font-body: "Gowun Batang","Song Myung",serif;
+    --font-label: "Oswald","Gowun Batang",sans-serif;
+    --font-num: "Oswald",sans-serif;
+    --label-tr: 0.16em; --label-tt: uppercase;
+  }
+
+  .screen::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: var(--glow); z-index: 0;
+  }
+  [data-theme="hifi"] .screen::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0.5;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px);
+    mix-blend-mode: overlay;
+  }
+
+  .lbl { font-family: var(--font-label); text-transform: var(--label-tt);
+    letter-spacing: var(--label-tr); font-size: 11px; color: var(--ink-mute);
+    font-weight: 500; white-space: nowrap; }
+
+  /* ===================== COVER ===================== */
+  .cover { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 56px; cursor: pointer;
+    background: var(--bg);
+    background-image:
+      radial-gradient(90% 70% at 50% 30%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.45) 100%),
+      var(--glow);
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+  }
+  .cover.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+  .cover-kicker { display: flex; align-items: center; gap: 14px; color: var(--accent);
+    margin-bottom: 30px; }
+  .cover-kicker .lbl { color: var(--accent); }
+  .kicker-rule { width: 46px; height: 1px; background: linear-gradient(90deg, transparent, var(--accent)); }
+  .kicker-rule.r { background: linear-gradient(90deg, var(--accent), transparent); }
+  .cover-logo { width: 480px; max-width: 72%; height: auto; margin: 4px 0 2px;
+    filter: drop-shadow(0 6px 34px rgba(0,0,0,0.55)); }
+  .cover-name { font-family: var(--font-disp); font-weight: 700; line-height: 1.02;
+    font-size: 94px; letter-spacing: 0.01em; color: var(--ink); white-space: nowrap; }
+  [data-theme="hifi"] .cover-name { font-weight: 700; letter-spacing: -0.01em; }
+  [data-theme="brass"] .cover-name { font-size: 92px; letter-spacing: 0.02em; }
+  .cover-name .amp { color: var(--accent); }
+  .cover-tagline { font-family: var(--font-body); font-size: 27px; color: var(--accent-soft);
+    margin-top: 22px; letter-spacing: 0.02em; white-space: nowrap; }
+  .cover-story { font-family: var(--font-body); max-width: 620px; margin-top: 24px;
+    font-size: 17px; line-height: 1.95; color: var(--ink-soft); text-wrap: pretty; }
+  .cover-divider { width: 1px; height: 46px; background: linear-gradient(var(--line-strong), transparent);
+    margin: 34px 0 26px; }
+  .enter { display: inline-flex; align-items: center; gap: 12px; }
+  .enter .lbl { color: var(--ink); font-size: 13px; }
+  .enter-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:0.35; transform:scale(0.8);} 50%{opacity:1; transform:scale(1.25);} }
+  .cover-foot { position: absolute; bottom: 34px; left: 0; right: 0; display: flex;
+    justify-content: center; gap: 26px; color: var(--ink-mute); }
+
+  /* ===================== MENU ===================== */
+  .menu { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column;
+    opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+  .menu.show { opacity: 1; pointer-events: auto; }
+
+  .topbar { flex: 0 0 auto; display: flex; align-items: center; gap: 20px;
+    padding: 22px 38px 18px; border-bottom: 1px solid var(--line); position: relative; z-index: 2; }
+  .brand { display: flex; align-items: center; gap: 16px; cursor: pointer; }
+  .brand-name { font-family: var(--font-disp); font-weight: 700; font-size: 25px;
+    letter-spacing: 0.04em; color: var(--ink); }
+  [data-theme="hifi"] .brand-name { letter-spacing: 0; }
+  .brand-sub { color: var(--ink-mute); white-space: nowrap; padding-left: 16px;
+    border-left: 1px solid var(--line); }
+  .brand-logo { height: 46px; width: auto; flex: 0 0 auto; }
+  .topbar-spacer { flex: 1; }
+  .search { display: flex; align-items: center; gap: 10px; width: 340px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    padding: 11px 18px; transition: border-color 0.2s; }
+  [data-theme="hifi"] .search { border-radius: 4px; }
+  [data-theme="brass"] .search { border-radius: 2px; }
+  .search:focus-within { border-color: var(--accent); }
+  .search svg { flex: 0 0 auto; stroke: var(--ink-mute); }
+  .search input { flex: 1; background: none; border: none; outline: none; color: var(--ink);
+    font-family: var(--font-body); font-size: 15px; }
+  .search input::placeholder { color: var(--ink-mute); }
+  .search .clear { color: var(--ink-mute); cursor: pointer; font-size: 18px; line-height: 1;
+    width: 18px; text-align: center; }
+
+  .controls { flex: 0 0 auto; display: flex; align-items: center; gap: 18px;
+    padding: 16px 38px; position: relative; z-index: 2; }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px; gap: 2px; }
+  [data-theme="hifi"] .seg { border-radius: 4px; }
+  [data-theme="brass"] .seg { border-radius: 2px; }
+  .seg button { font-family: var(--font-label); text-transform: var(--label-tt);
+    letter-spacing: 0.06em; font-size: 12.5px; color: var(--ink-soft);
+    background: none; border: none; cursor: pointer; padding: 8px 17px; border-radius: 999px;
+    transition: all 0.18s; white-space: nowrap; }
+  [data-theme="hifi"] .seg button, [data-theme="brass"] .seg button { border-radius: 2px; }
+  .seg button.on { background: var(--accent); color: var(--chip-on-ink); font-weight: 600; }
+  .controls-spacer { flex: 1; }
+  .count { color: var(--ink-mute); }
+  .count b { color: var(--accent); font-family: var(--font-num); font-weight: 700; }
+
+  .chips { flex: 0 0 auto; display: flex; gap: 9px; overflow-x: auto; padding: 2px 38px 18px;
+    position: relative; z-index: 2; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; font-family: var(--font-label); text-transform: var(--label-tt);
+    letter-spacing: 0.08em; font-size: 12px; color: var(--ink-soft);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    padding: 9px 16px; cursor: pointer; transition: all 0.16s; white-space: nowrap; }
+  [data-theme="hifi"] .chip { border-radius: 3px; }
+  [data-theme="brass"] .chip { border-radius: 2px; }
+  .chip:hover { border-color: var(--line-strong); color: var(--ink); }
+  .chip.on { background: var(--chip-on); color: var(--chip-on-ink); border-color: var(--chip-on);
+    font-weight: 600; }
+  .chip .c-en { opacity: 0.6; font-size: 10px; margin-left: 5px; }
+  .chip.on .c-en { opacity: 0.75; }
+
+  /* list */
+  .list { flex: 1; overflow-y: auto; padding: 6px 38px 60px; position: relative; z-index: 2; }
+  .list::-webkit-scrollbar { width: 8px; }
+  .list::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+  .list::-webkit-scrollbar-track { background: transparent; }
+
+  .section { margin-top: 26px; }
+  .section:first-child { margin-top: 10px; }
+  .sec-head { display: flex; align-items: flex-end; gap: 16px; padding: 0 6px 14px;
+    border-bottom: 1px solid var(--line-strong); margin-bottom: 4px; }
+  .sec-ko { font-family: var(--font-disp); font-size: 27px; color: var(--ink); font-weight: 700;
+    white-space: nowrap; flex: 0 0 auto; }
+  [data-theme="brass"] .sec-ko { font-weight: 400; }
+  .sec-en { font-family: var(--font-label); text-transform: uppercase; letter-spacing: 0.22em;
+    font-size: 12px; color: var(--accent); padding-bottom: 5px; }
+  .sec-blurb { flex: 1; text-align: right; color: var(--ink-mute); font-family: var(--font-body);
+    font-size: 13px; padding-bottom: 4px; font-style: italic; }
+  [data-theme="hifi"] .sec-blurb { font-style: normal; }
+  .sec-count { font-family: var(--font-num); color: var(--ink-mute); font-size: 14px; padding-bottom: 4px; }
+
+  .row { display: block; width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+    padding: 15px 8px 14px; border-bottom: 1px solid var(--line); position: relative;
+    color: inherit; font-family: var(--font-body); transition: background 0.16s; }
+  .row-head { display: grid; grid-template-columns: var(--row-cols, 1fr auto); align-items: center;
+    gap: 4px 18px; }
+  .row:hover { background: var(--panel); }
+  .row.open { background: var(--panel); }
+  .row-num { display: none; }
+  [data-theme="brass"] .row { --row-cols: 42px 1fr auto; }
+  [data-theme="brass"] .row-num { display: block; font-family: var(--font-num); font-weight: 600;
+    font-size: 13px; color: var(--accent); letter-spacing: 0.05em; align-self: start; padding-top: 4px; }
+  .row-main { min-width: 0; grid-column: var(--main-col, 1); }
+  [data-theme="brass"] .row-main { grid-column: 2; }
+  .row-title { display: flex; align-items: center; gap: 11px; flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+  .row-name { font-family: var(--font-disp); font-size: 21px; color: var(--ink); font-weight: 600;
+    letter-spacing: 0.01em; line-height: 1.1; white-space: nowrap; }
+  [data-theme="brass"] .row-name { font-family: "Oswald", sans-serif; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.03em; }
+  .row-expr { color: var(--ink-soft); font-weight: 400; font-size: 0.82em; }
+  .row-age { font-family: var(--font-label); text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 10.5px; color: var(--accent); border: 1px solid var(--line-strong);
+    border-radius: 4px; padding: 2px 7px; white-space: nowrap; align-self: center; }
+  .row-notes { color: var(--ink-soft); font-size: 14px; margin-top: 5px; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 560px; }
+  .row-right { display: flex; align-items: center; gap: 16px; justify-self: end; }
+  .row-abv { font-family: var(--font-num); font-size: 13px; color: var(--ink-mute); }
+  .row-price { font-family: var(--font-num); white-space: nowrap; text-align: right; }
+  .row-price .won { font-size: 14px; color: var(--ink-mute); margin-right: 3px; vertical-align: 0.08em; }
+  .row-price .num { font-size: 27px; color: var(--ink); font-weight: 700; letter-spacing: 0.01em; }
+  [data-theme="hifi"] .row-price .num { font-size: 23px; }
+  .row-caret { color: var(--ink-mute); }
+
+  /* ===================== MODAL ===================== */
+  .modal-backdrop { position: absolute; inset: 0; z-index: 50; display: flex;
+    align-items: center; justify-content: center; padding: 40px;
+    background: rgba(6,5,4,0.74); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
+  .modal { position: relative; width: 880px; max-width: 100%; height: 564px; display: flex;
+    background: var(--panel); border: 1px solid var(--line-strong); border-radius: 16px;
+    overflow: hidden; box-shadow: 0 40px 100px -28px rgba(0,0,0,0.92); }
+  [data-theme="hifi"] .modal { border-radius: 6px; }
+  [data-theme="brass"] .modal { border-radius: 2px; }
+  .modal-close { position: absolute; top: 16px; right: 18px; z-index: 5; width: 40px; height: 40px;
+    border-radius: 50%; background: rgba(0,0,0,0.4); border: 1px solid var(--line);
+    color: var(--ink); font-size: 23px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; }
+  .modal-close:hover { background: rgba(0,0,0,0.65); border-color: var(--line-strong); }
+
+  .modal-photo { position: relative; flex: 0 0 318px; border-right: 1px solid var(--line);
+    background: radial-gradient(80% 60% at 50% 32%, rgba(201,138,60,0.14), transparent 70%),
+      linear-gradient(165deg, var(--panel-2), #0c0908); }
+  .bottle-img { position: absolute; inset: 26px 20px 22px; width: calc(100% - 40px);
+    height: calc(100% - 48px); object-fit: contain; z-index: 2;
+    filter: drop-shadow(0 24px 34px rgba(0,0,0,0.6)); }
+  .bottle-placeholder { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: var(--ink-mute); font-family: var(--font-label);
+    font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.4; }
+  .modal-photo-tag { position: absolute; bottom: 18px; left: 20px; color: var(--accent);
+    letter-spacing: 0.22em; z-index: 2; pointer-events: none; }
+  .modal-photo-frame { position: absolute; inset: 16px; border: 1px solid var(--line);
+    pointer-events: none; z-index: 1; }
+  [data-theme="brass"] .modal-photo-frame { inset: 12px; border-color: var(--line-strong); }
+
+  .modal-body { flex: 1; padding: 32px 36px 30px; display: flex; flex-direction: column;
+    min-width: 0; overflow-y: auto; }
+  .modal-region { color: var(--accent); margin-bottom: 11px; }
+  .modal-name { font-family: var(--font-disp); font-size: 37px; font-weight: 700; color: var(--ink);
+    line-height: 1.04; letter-spacing: 0.01em; }
+  [data-theme="brass"] .modal-name { font-family: "Oswald", sans-serif; text-transform: uppercase;
+    font-weight: 500; letter-spacing: 0.02em; }
+  .modal-expr { font-family: var(--font-body); font-size: 18px; color: var(--ink-soft); margin-top: 5px; }
+  .modal-meta { display: flex; gap: 9px; margin-top: 16px; }
+  .meta-chip { font-family: var(--font-label); text-transform: uppercase; letter-spacing: 0.1em;
+    font-size: 11px; color: var(--accent); border: 1px solid var(--line-strong);
+    border-radius: 4px; padding: 6px 11px; }
+  [data-theme="hifi"] .meta-chip { border-radius: 3px; }
+
+  .modal-sec { margin-top: 22px; }
+  .modal-sec-lbl { margin-bottom: 11px; }
+  .modal-notes { font-family: var(--font-body); font-size: 16px; line-height: 1.7; color: var(--ink);
+    text-wrap: pretty; }
+
+  .flavor { display: flex; flex-direction: column; gap: 9px; }
+  .flavor-row { display: flex; align-items: center; gap: 16px; }
+  .flavor-ko { font-family: var(--font-body); font-size: 13px; color: var(--ink-soft);
+    width: 92px; flex: 0 0 auto; text-align: right; white-space: nowrap; }
+  .flavor-bar { display: flex; gap: 5px; }
+  .fseg { width: 32px; height: 7px; border-radius: 2px; background: var(--line); }
+  .fseg.on { background: var(--accent); }
+  [data-theme="hifi"] .fseg { border-radius: 0; }
+  [data-theme="brass"] .fseg { border-radius: 1px; height: 8px; }
+
+  .modal-prices { margin-top: auto; padding-top: 24px; display: flex; gap: 14px; }
+  .price-card { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 18px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+  .price-card.accent { border-color: var(--accent); }
+  [data-theme="hifi"] .price-card { border-radius: 4px; }
+  [data-theme="brass"] .price-card { border-radius: 2px; }
+  .price-v { font-family: var(--font-num); font-size: 26px; font-weight: 700; color: var(--ink);
+    letter-spacing: 0.01em; }
+  .price-card.accent .price-v { color: var(--accent); }
+  .price-v .won { font-size: 15px; color: var(--ink-mute); margin-right: 3px; vertical-align: 0.06em; }
+
+  .empty { text-align: center; padding: 80px 20px; color: var(--ink-mute);
+    font-family: var(--font-body); font-size: 17px; }
+  .menu-note { text-align: center; color: var(--ink-mute); font-family: var(--font-body);
+    font-size: 12.5px; padding: 22px 0 8px; font-style: italic; }
+  [data-theme="hifi"] .menu-note { font-style: normal; letter-spacing: 0.02em; }
+
+  /* ===================== RESPONSIVE ===================== */
+  @media (max-width: 900px) {
+    .topbar { padding: 16px 20px 14px; gap: 14px; }
+    .controls { padding: 12px 20px; }
+    .chips { padding: 2px 20px 14px; }
+    .list { padding: 6px 20px 40px; }
+    .search { width: 240px; }
+    .modal { flex-direction: column; height: auto; max-height: calc(100% - 40px); }
+    .modal-photo { flex: 0 0 220px; border-right: none; border-bottom: 1px solid var(--line); }
+    .modal-body { padding: 24px; }
+    .cover { padding: 40px 24px; }
+    .cover-logo { width: 320px; }
+    .cover-tagline { font-size: 22px; }
+    .cover-story { font-size: 15px; }
+  }
+  @media (max-width: 600px) {
+    .search { width: 180px; padding: 8px 14px; }
+    .brand-logo { height: 34px; }
+    .brand-sub { display: none; }
+    .row-notes { max-width: 280px; }
+    .modal { width: 100%; }
+    .modal-backdrop { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Supabase client for real-time menu updates -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <script>
+/* ===================== SUPABASE CONFIG ===================== */
+/* Set these after creating your Supabase project */
+window.__SUPABASE_URL = '';  // e.g. 'https://xxxx.supabase.co'
+window.__SUPABASE_ANON_KEY = '';  // your anon/public key
+
+/* ===================== DATA ===================== */
+window.BACKROOM = (function () {
+  const INFO = {
+    name: "BAR BACKROOM",
+    nameKo: "\uBC14 \uBC31\uB8F8",
+    kicker: "SPEAKEASY \xB7 WHISKY CELLAR",
+    since: "SINCE 2019",
+    tagline: "\uBCBD\uB3CC \uB108\uBA38, \uC228\uACE8\uB454 \uD55C \uC794",
+    story: "\uC9C0\uD558\uC758 \uB05D, \uBB34\uB108\uC9C4 \uBCBD\uB3CC \uC0AC\uC774\uB85C \uB4E4\uC5B4\uC11C\uBA74 \uBE48\uD2F0\uC9C0 \uC624\uB514\uC624\uC758 \uC120\uC728\uC774 \uD750\uB985\uB2C8\uB2E4. \uC9C4\uACF5\uAD00 \uC568\uD504\uC758 \uC628\uAE30\uC640 \uD568\uAED8 \uCC9C\uCC9C\uD788 \uC74C\uBBF8\uD558\uB294 \uC704\uC2A4\uD0A4 \uD55C \uC794. \uBC31\uB8F8\uC740 \uC11C\uB450\uB974\uC9C0 \uC54A\uB294 \uC0AC\uB78C\uB4E4\uC744 \uC704\uD55C \uC790\uB9AC\uC785\uB2C8\uB2E4.",
+    note: "\uBAA8\uB4E0 \uAC00\uACA9\uC740 30ml(\uC794) \uAE30\uC900\uC774\uBA70, \uBCF4\uD2C0 \uAD6C\uB9E4 \uBC0F \uBCF4\uAD00\uC774 \uAC00\uB2A5\uD569\uB2C8\uB2E4.",
+    hours: "PM 7 \u2014 LATE \xB7 \uC5F0\uC911\uBB34\uD734",
+    place: "\uC9C0\uD558 1\uCE35 \xB7 \uC608\uC57D \uD658\uC601",
+  };
+
+  const REGIONS = [
+    { key: "islay", ko: "\uC544\uC77C\uB77C", en: "Islay", blurb: "\uBC14\uB2E4\uC640 \uD53C\uD2B8, \uAC00\uC7A5 \uAC15\uB82C\uD55C \uC12C" },
+    { key: "highland", ko: "\uD558\uC774\uB79C\uB4DC", en: "Highland", blurb: "\uB113\uC740 \uACE0\uC6D0, \uB2E4\uCC44\uB85C\uC6B4 \uC2A4\uD399\uD2B8\uB7FC" },
+    { key: "speyside", ko: "\uC2A4\uD398\uC774\uC0AC\uC774\uB4DC", en: "Speyside", blurb: "\uC170\uB9AC\uC640 \uACFC\uC77C, \uC6B0\uC544\uD55C \uC815\uD1B5" },
+    { key: "islands", ko: "\uC544\uC77C\uB79C\uB4DC", en: "Islands", blurb: "\uC12C\uC758 \uD6C4\uCD94\uC640 \uC607\uC740 \uC2A4\uBAA8\uD06C" },
+    { key: "campbeltown", ko: "\uCEA0\uBCA8\uD0C0\uC6B4", en: "Campbeltown", blurb: "\uAE30\uB984\uC9C0\uACE0 \uBCF5\uD569\uC801\uC778 \uD56D\uAD6C\uC758 \uB9DB" },
+    { key: "lowland", ko: "\uB85C\uC6B0\uB79C\uB4DC", en: "Lowland", blurb: "\uC0BC\uC911\uC99D\uB958\uC758 \uAC00\uBCCD\uACE0 \uBD80\uB4DC\uB7EC\uC6B4 \uACB0" },
+    { key: "japanese", ko: "\uC7AC\uD328\uB2C8\uC988", en: "Japanese", blurb: "\uBBF8\uC988\uB098\uB77C\uC640 \uC12C\uC138\uD55C \uADE0\uD615" },
+    { key: "irish", ko: "\uC544\uC774\uB9AC\uC2DC", en: "Irish", blurb: "\uBD80\uB4DC\uB7EC\uC6B4 \uD3EC\uD2B8\uC2A4\uD2F8\uC758 \uB2E8\uC815\uD568" },
+    { key: "american", ko: "\uC544\uBA54\uB9AC\uCE78", en: "Bourbon", blurb: "\uBC14\uB2D0\uB77C\uC640 \uC624\uD06C, \uCE74\uB77C\uBA5C\uC758 \uB2E8\uB9DB" },
+    { key: "world", ko: "\uC6D4\uB4DC", en: "World", blurb: "\uAD6D\uACBD\uC744 \uB118\uB294 \uC0C8\uB85C\uC6B4 \uC99D\uB958" },
+  ];
+
+  const W = [
+    ["Ardbeg", "10", "islay", 46, 10, "\uAC15\uB82C\uD55C \uD53C\uD2B8\uC640 \uD0C0\uB974, \uB808\uBAAC \uC81C\uC2A4\uD2B8\uC758 \uAE34 \uC5EC\uC6B4", 16000, 190000],
+    ["Laphroaig", "10", "islay", 43, 10, "\uC694\uC624\uB4DC\uC640 \uBC14\uB2E4 \uB0B4\uC74C, \uC2A4\uBAA8\uD0A4\uD55C \uC57D\uC7AC\uD5A5", 15000, 170000],
+    ["Lagavulin", "16", "islay", 43, 16, "\uC9D9\uC740 \uD53C\uD2B8\uC640 \uC170\uB9AC\uC758 \uB2E8\uB9DB, \uC624\uB798 \uB0A8\uB294 \uC2A4\uBAA8\uD06C", 24000, 340000],
+    ["Bowmore", "12", "islay", 40, 12, "\uBD80\uB4DC\uB7EC\uC6B4 \uC2A4\uBAA8\uD06C\uC640 \uAFC0, \uC740\uC740\uD55C \uC2DC\uD2B8\uB7EC\uC2A4", 14000, 150000],
+    ["Caol Ila", "12", "islay", 43, 12, "\uAC00\uBCBC\uC6B4 \uD53C\uD2B8, \uC62C\uB9AC\uBE0C \uC624\uC77C\uACFC \uB808\uBAAC\uC758 \uC0B0\uB73B\uD568", 15000, 160000],
+    ["Bruichladdich", "Classic Laddie", "islay", 50, null, "\uBE44\uD53C\uD2B8, \uBCF4\uB9AC\uD5A5\uACFC \uD574\uD48D\uC758 \uBBF8\uB124\uB784", 17000, 210000],
+    ["Octomore", "14.1", "islay", 59.1, 5, "\uC555\uB3C4\uC801\uC778 \uD53C\uD2B8, \uB2E4\uD06C\uCD08\uCF5C\uB9BF\uACFC \uAC80\uC740 \uD6C4\uCD94", 38000, 520000],
+    ["Glenmorangie", "10 Original", "highland", 40, 10, "\uBCF5\uC22D\uC544\uC640 \uBC14\uB2D0\uB77C, \uAC00\uBCBC\uC6B4 \uAF43\uD5A5", 13000, 130000],
+    ["Aberfeldy", "12", "highland", 40, 12, "\uAFC0\uACFC \uBC14\uB2D0\uB77C, \uBD80\uB4DC\uB7EC\uC6B4 \uD1A0\uD53C", 13000, 140000],
+    ["Old Pulteney", "12", "highland", 40, 12, "\uD574\uD48D\uC758 \uC9ED\uC9E4\uD568\uACFC \uC0AC\uACFC\uD5A5", 14000, 150000],
+    ["GlenDronach", "12", "highland", 43, 12, "\uC170\uB9AC, \uAC74\uD3EC\uB3C4\uC640 \uB2E4\uD06C\uCD08\uCF5C\uB9BF", 19000, 240000],
+    ["Dalmore", "12", "highland", 40, 12, "\uC624\uB80C\uC9C0 \uB9C8\uBA40\uB808\uC774\uB4DC\uC640 \uCD08\uCF5C\uB9BF, \uC170\uB9AC", 21000, 280000],
+    ["Oban", "14", "highland", 43, 14, "\uBC14\uB2E4\uC18C\uAE08\uACFC \uC624\uB80C\uC9C0, \uC740\uC740\uD55C \uC2A4\uBAA8\uD06C", 22000, 300000],
+    ["Glenmorangie", "Signet", "highland", 46, null, "\uC9C4\uD55C \uCD08\uCF5C\uB9BF\uACFC \uC5D0\uC2A4\uD504\uB808\uC18C, \uB18D\uBC00\uD55C \uBC14\uB514", 45000, 720000],
+    ["Glenfiddich", "12", "speyside", 40, 12, "\uC11C\uC591\uBC30\uC640 \uCCAD\uC0AC\uACFC, \uC0B0\uB73B\uD55C \uB9C8\uBB34\uB9AC", 12000, 120000],
+    ["The Glenlivet", "12", "speyside", 40, 12, "\uAF43\uD5A5\uACFC \uC2DC\uD2B8\uB7EC\uC2A4, \uAC00\uBCBC\uC6B4 \uBC14\uB514", 12000, 120000],
+    ["Aberlour", "12", "speyside", 40, 12, "\uC170\uB9AC\uC640 \uC2A4\uD30C\uC774\uC2A4, \uACE0\uC18C\uD55C \uACAC\uACFC\uB958", 18000, 220000],
+    ["Balvenie", "DoubleWood 12", "speyside", 40, 12, "\uAFC0\uACFC \uC170\uB9AC, \uB530\uB73B\uD55C \uC624\uD06C", 19000, 230000],
+    ["Glenfarclas", "105", "speyside", 60, null, "\uAC15\uD55C \uC170\uB9AC\uC640 \uD06C\uB9AC\uC2A4\uB9C8\uC2A4 \uCF00\uC774\uD06C", 24000, 320000],
+    ["Macallan", "12 Double Cask", "speyside", 40, 12, "\uC170\uB9AC\uC640 \uBC14\uB2D0\uB77C, \uB9D0\uB9B0 \uACFC\uC77C", 28000, 380000],
+    ["Macallan", "18 Sherry Oak", "speyside", 43, 18, "\uD48D\uBD80\uD55C \uC170\uB9AC, \uB9D0\uB9B0 \uACFC\uC77C\uACFC \uC2A4\uD30C\uC774\uC2A4", 90000, 1500000],
+    ["Jura", "12", "islands", 40, 12, "\uAC00\uBCBC\uC6B4 \uC2A4\uBAA8\uD06C\uC640 \uD1A0\uD53C, \uACAC\uACFC\uB958", 14000, 150000],
+    ["Arran", "10", "islands", 46, 10, "\uC2DC\uD2B8\uB7EC\uC2A4\uC640 \uBC14\uB2D0\uB77C, \uC0B0\uB73B\uD568", 15000, 160000],
+    ["Talisker", "10", "islands", 45.8, 10, "\uAC80\uC740 \uD6C4\uCD94\uC640 \uBC14\uB2E4\uC18C\uAE08, \uC2A4\uBAA8\uD0A4\uD55C \uD53C\uB2C8\uC2DC", 16000, 180000],
+    ["Highland Park", "12 Viking Honour", "islands", 40, 12, "\uD5E4\uB354 \uAFC0\uACFC \uAC00\uBCBC\uC6B4 \uC2A4\uBAA8\uD06C", 16000, 180000],
+    ["Talisker", "Distillers Edition", "islands", 45.8, null, "\uC544\uBAAC\uD2F0\uC57C\uB3C4 \uC170\uB9AC\uC640 \uD6C4\uCD94, \uAE4A\uC740 \uC2A4\uBAA8\uD06C", 26000, 360000],
+    ["Glen Scotia", "Double Cask", "campbeltown", 46, null, "\uC170\uB9AC\uC640 \uBC14\uB2D0\uB77C, \uBC14\uB2E4\uC18C\uAE08", 17000, 200000],
+    ["Kilkerran", "12", "campbeltown", 46, 12, "\uAC00\uBCBC\uC6B4 \uD53C\uD2B8\uC640 \uC2DC\uD2B8\uB7EC\uC2A4, \uC88B\uC740 \uADE0\uD615", 22000, 290000],
+    ["Springbank", "10", "campbeltown", 46, 10, "\uC9ED\uC9E4\uD55C \uD53C\uD2B8\uC640 \uACFC\uC77C, \uBCF5\uD569\uC801\uC778 \uBC14\uB514", 26000, 360000],
+    ["Springbank", "15", "campbeltown", 46, 15, "\uAE4A\uC740 \uC170\uB9AC\uC640 \uAC00\uC8FD, \uC624\uC77C\uB9AC\uD55C \uC9C8\uAC10", 45000, 680000],
+    ["Auchentoshan", "12", "lowland", 40, 12, "\uC0BC\uC911\uC99D\uB958\uC758 \uBD80\uB4DC\uB7EC\uC6C0, \uC2DC\uD2B8\uB7EC\uC2A4\uC640 \uC544\uBAAC\uB4DC", 14000, 150000],
+    ["Glenkinchie", "12", "lowland", 43, 12, "\uD480\uD5A5\uACFC \uB808\uBAAC, \uAC00\uBCBC\uC6B4 \uBC14\uB514", 15000, 160000],
+    ["Auchentoshan", "Three Wood", "lowland", 43, null, "\uC170\uB9AC\uC640 \uC624\uB80C\uC9C0, \uD48D\uBD80\uD55C \uB2E8\uB9DB", 18000, 220000],
+    ["Nikka", "From The Barrel", "japanese", 51.4, null, "\uD48D\uBD80\uD55C \uBC14\uB514\uC640 \uC2A4\uD30C\uC774\uC2A4, \uCE74\uB77C\uBA5C", 22000, 230000],
+    ["Chita", "Single Grain", "japanese", 43, null, "\uBD80\uB4DC\uB7EC\uC6B4 \uBC14\uB2D0\uB77C\uC640 \uAFC0, \uAC00\uBCBC\uC6B4 \uACB0", 20000, 220000],
+    ["Hibiki", "Harmony", "japanese", 43, null, "\uAFC0\uACFC \uC624\uB80C\uC9C0, \uBBF8\uC988\uB098\uB77C\uC758 \uC5EC\uC6B4", 45000, 600000],
+    ["Hakushu", "12", "japanese", 43, 12, "\uCCAD\uB7C9\uD55C \uBBFC\uD2B8\uC640 \uD47F\uC0AC\uACFC, \uAC00\uBCBC\uC6B4 \uC2A4\uBAA8\uD06C", 60000, 950000],
+    ["Yamazaki", "12", "japanese", 43, 12, "\uBBF8\uC988\uB098\uB77C \uC624\uD06C\uC758 \uBC31\uB2E8\uD5A5, \uC798 \uC775\uC740 \uACFC\uC77C", 60000, 950000],
+    ["Jameson", "Original", "irish", 40, null, "\uBD80\uB4DC\uB7EC\uC6B4 \uBC14\uB2D0\uB77C\uC640 \uACAC\uACFC\uB958", 10000, 90000],
+    ["Bushmills", "10 Single Malt", "irish", 40, 10, "\uAFC0\uACFC \uBC14\uB2D0\uB77C, \uBD80\uB4DC\uB7EC\uC6B4 \uBAB0\uD2B8", 14000, 150000],
+    ["Green Spot", "", "irish", 40, null, "\uC0AC\uACFC\uC640 \uAFC0, \uC2E0\uC120\uD55C \uC624\uD06C", 21000, 260000],
+    ["Redbreast", "12", "irish", 40, 12, "\uC170\uB9AC\uC640 \uC2A4\uD30C\uC774\uC2A4, \uD48D\uBD80\uD55C \uD3EC\uD2B8\uC2A4\uD2F8", 22000, 280000],
+    ["Redbreast", "15", "irish", 46, 15, "\uC9C4\uD55C \uACFC\uC77C\uACFC \uC624\uD06C, \uBB35\uC9C1\uD55C \uBC14\uB514", 38000, 520000],
+    ["Maker\u2019s Mark", "", "american", 45, null, "\uCE74\uB77C\uBA5C\uACFC \uBC14\uB2D0\uB77C, \uBD80\uB4DC\uB7EC\uC6B4 \uD718\uD2F0\uB4DC", 12000, 110000],
+    ["Buffalo Trace", "", "american", 45, null, "\uCE74\uB77C\uBA5C\uACFC \uC624\uD06C, \uAC00\uBCBC\uC6B4 \uD6C4\uCD94", 13000, 120000],
+    ["Wild Turkey", "101", "american", 50.5, 8, "\uAC15\uD55C \uC2A4\uD30C\uC774\uC2A4\uC640 \uCE74\uB77C\uBA5C, \uC624\uD06C", 13000, 120000],
+    ["Woodford Reserve", "", "american", 43.2, null, "\uB9D0\uB9B0 \uACFC\uC77C\uACFC \uBC14\uB2D0\uB77C, \uC2A4\uD30C\uC774\uC2A4", 14000, 140000],
+    ["Michter\u2019s", "US\u26051 Bourbon", "american", 45.7, null, "\uCE74\uB77C\uBA5C\uACFC \uC2A4\uD1A4\uD504\uB8E8\uD2B8, \uBD80\uB4DC\uB7EC\uC6C0", 18000, 210000],
+    ["Booker\u2019s", "Small Batch", "american", 62.5, null, "\uC9C4\uD55C \uBC14\uB2D0\uB77C\uC640 \uC624\uD06C, \uAC15\uB82C\uD55C \uCE90\uC2A4\uD06C \uC2A4\uD2B8\uB81D\uC2A4", 28000, 380000],
+    ["Mackmyra", "Brukswhisky", "world", 41.4, null, "\uAC00\uBCBC\uC6B4 \uACFC\uC77C\uACFC \uC624\uD06C, \uAE54\uB054\uD568 (\uC2A4\uC6E8\uB374)", 19000, 220000],
+    ["Penderyn", "Madeira", "world", 46, null, "\uB9C8\uB370\uC774\uB77C\uC640 \uAC74\uD3EC\uB3C4, \uD06C\uB9AC\uBBF8\uD55C \uC9C8\uAC10 (\uC6E8\uC77C\uC2A4)", 20000, 240000],
+    ["Amrut", "Fusion", "world", 50, null, "\uD53C\uD2B8\uC640 \uACFC\uC77C, \uC2A4\uD30C\uC774\uC2DC\uD55C \uBC14\uB514 (\uC778\uB3C4)", 22000, 280000],
+    ["Kavalan", "Classic", "world", 40, null, "\uC5F4\uB300\uACFC\uC77C\uACFC \uBC14\uB2D0\uB77C, \uD48D\uBD80\uD55C \uB2E8\uB9DB (\uB300\uB9CC)", 24000, 300000],
+  ];
+
+  const PHOTOS = {
+    "Bowmore 12": "assets/bottles/bowmore-12.png",
+    "Laphroaig 10": "assets/bottles/laphroig_10.png",
+  };
+
+  const WHISKEYS = W.map(function(r, i) {
+    return {
+      id: i + 1,
+      brand: r[0],
+      expr: r[1],
+      name: (r[0] + " " + r[1]).trim(),
+      region: r[2],
+      abv: r[3],
+      age: r[4],
+      notes: r[5],
+      glass: r[6],
+      bottle: r[7],
+      photo: PHOTOS[(r[0] + " " + r[1]).trim()] || null,
+    };
+  });
+
+  return { INFO: INFO, REGIONS: REGIONS, WHISKEYS: WHISKEYS };
+})();
+  </script>
+  <script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+const { INFO, REGIONS, WHISKEYS } = window.BACKROOM;
+const REGION_MAP = Object.fromEntries(REGIONS.map((r) => [r.key, r]));
+const won = (n) => n.toLocaleString("ko-KR");
+const ageLabel = (a) => (a == null ? "NAS" : a + "\uB144");
+const LS = "backroom.state.v1";
+const THEME = "cellar";
+
+/* ---------- small UI bits ---------- */
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+    </svg>
+  );
+}
+function Caret() {
+  return (
+    <svg className="row-caret" width="17" height="17" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+/* ---------- flavour keynote ---------- */
+const FLAVOR_AXES = [
+  { key: "peat", ko: "\uD53C\uD2B8 \xB7 \uC2A4\uBAA8\uD06C" },
+  { key: "body", ko: "\uBC14\uB514 \xB7 \uBB34\uAC8C\uAC10" },
+  { key: "sherry", ko: "\uC170\uB9AC \xB7 \uB2E8\uB9DB" },
+  { key: "fruit", ko: "\uACFC\uC77C \xB7 \uD5A5" },
+  { key: "spice", ko: "\uC2A4\uD30C\uC774\uC2A4 \xB7 \uC624\uD06C" },
+];
+const REGION_BASE = {
+  islay:       { peat: 5, body: 4, sherry: 2, fruit: 2, spice: 3 },
+  highland:    { peat: 2, body: 3, sherry: 3, fruit: 3, spice: 3 },
+  speyside:    { peat: 1, body: 3, sherry: 4, fruit: 4, spice: 2 },
+  islands:     { peat: 3, body: 3, sherry: 2, fruit: 3, spice: 3 },
+  campbeltown: { peat: 3, body: 4, sherry: 3, fruit: 2, spice: 3 },
+  lowland:     { peat: 1, body: 2, sherry: 2, fruit: 4, spice: 2 },
+  japanese:    { peat: 2, body: 3, sherry: 3, fruit: 3, spice: 3 },
+  irish:       { peat: 1, body: 2, sherry: 3, fruit: 3, spice: 2 },
+  american:    { peat: 1, body: 3, sherry: 4, fruit: 2, spice: 4 },
+  world:       { peat: 2, body: 3, sherry: 3, fruit: 3, spice: 2 },
+};
+const FLAVOR_KW = {
+  peat: ["\uD53C\uD2B8", "\uC2A4\uBAA8\uD06C", "\uD0C0\uB974", "\uC694\uC624\uB4DC", "\uC57D\uC7AC", "\uD574\uD48D", "\uBC14\uB2E4\uC18C\uAE08", "\uC62C\uB9AC\uBE0C"],
+  sherry: ["\uC170\uB9AC", "\uAFC0", "\uCE74\uB77C\uBA5C", "\uBC14\uB2D0\uB77C", "\uD1A0\uD53C", "\uB9C8\uBA40\uB808\uC774\uB4DC", "\uAC74\uD3EC\uB3C4", "\uCD08\uCF5C\uB9BF", "\uD06C\uB9AC\uC2A4\uB9C8\uC2A4", "\uB9D0\uB9B0 \uACFC\uC77C"],
+  fruit: ["\uC0AC\uACFC", "\uC11C\uC591\uBC30", "\uBCF5\uC22D\uC544", "\uC624\uB80C\uC9C0", "\uC2DC\uD2B8\uB7EC\uC2A4", "\uB808\uBAAC", "\uC5F4\uB300", "\uD3EC\uB3C4", "\uC790\uB450", "\uC2A4\uD1A4\uD504\uB8E8\uD2B8", "\uD47F\uC0AC\uACFC", "\uBBFC\uD2B8"],
+  spice: ["\uC2A4\uD30C\uC774\uC2A4", "\uD6C4\uCD94", "\uC624\uD06C", "\uBC31\uB2E8", "\uACAC\uACFC", "\uACC4\uD53C", "\uAC00\uC8FD"],
+  body: ["\uBB35\uC9C1", "\uB18D\uBC00", "\uD48D\uBD80", "\uC624\uC77C", "\uAE30\uB984", "\uCE90\uC2A4\uD06C \uC2A4\uD2B8\uB81D\uC2A4", "\uC9C4\uD55C", "\uAC15\uB82C", "\uC555\uB3C4"],
+};
+function deriveProfile(w) {
+  const base = { ...(REGION_BASE[w.region] || REGION_BASE.world) };
+  const notes = w.notes || "";
+  for (const axis in FLAVOR_KW) {
+    let hits = 0;
+    for (const kw of FLAVOR_KW[axis]) if (notes.includes(kw)) hits++;
+    base[axis] += (hits > 0 ? 1 : 0) + (hits > 1 ? 1 : 0);
+  }
+  if (w.abv >= 55) base.body += 1;
+  for (const k in base) base[k] = Math.max(1, Math.min(5, base[k]));
+  return base;
+}
+function FlavorBar({ value }) {
+  return (
+    <div className="flavor-bar">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <span key={n} className={"fseg" + (n <= value ? " on" : "")} />
+      ))}
+    </div>
+  );
+}
+
+/* ---------- detail modal ---------- */
+function WhiskeyModal({ w, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const region = REGION_MAP[w.region];
+  const prof = deriveProfile(w);
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="\uB2EB\uAE30">&times;</button>
+        <div className="modal-photo">
+          <div className="modal-photo-frame" />
+          {w.photo ? (
+            <img className="bottle-img" src={w.photo} alt={w.name} />
+          ) : (
+            <div className="bottle-placeholder">{w.brand}</div>
+          )}
+          <span className="modal-photo-tag lbl">{region.en}</span>
+        </div>
+        <div className="modal-body">
+          <div className="modal-region lbl">{region.ko} &middot; {region.en}</div>
+          <h2 className="modal-name">{w.brand}</h2>
+          {w.expr ? <div className="modal-expr">{w.expr}</div> : null}
+          <div className="modal-meta">
+            <span className="meta-chip">{ageLabel(w.age)}</span>
+            <span className="meta-chip">{w.abv}% ABV</span>
+          </div>
+          <div className="modal-sec">
+            <div className="modal-sec-lbl lbl">{"\uD14C\uC774\uC2A4\uD305 \uB178\uD2B8"} &middot; TASTING</div>
+            <p className="modal-notes">{w.notes}.</p>
+          </div>
+          <div className="modal-sec">
+            <div className="modal-sec-lbl lbl">{"\uD0A4\uB178\uD2B8"} &middot; FLAVOUR</div>
+            <div className="flavor">
+              {FLAVOR_AXES.map((a) => (
+                <div className="flavor-row" key={a.key}>
+                  <span className="flavor-ko">{a.ko}</span>
+                  <FlavorBar value={prof[a.key]} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="modal-prices">
+            <div className="price-card accent">
+              <span className="lbl">{"\uC794"} &middot; GLASS 30ml</span>
+              <span className="price-v"><span className="won">{"\u20A9"}</span>{won(w.glass)}</span>
+            </div>
+            <div className="price-card">
+              <span className="lbl">{"\uBCF4\uD2C0"} &middot; BOTTLE</span>
+              <span className="price-v"><span className="won">{"\u20A9"}</span>{won(w.bottle)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- whiskey row ---------- */
+function Row({ w, idx, onOpen }) {
+  return (
+    <button className="row" onClick={onOpen}>
+      <div className="row-head">
+        <span className="row-num">{String(idx + 1).padStart(3, "0")}</span>
+        <div className="row-main">
+          <div className="row-title">
+            <span className="row-name">
+              {w.brand}{" "}
+              {w.expr ? <span className="row-expr">{w.expr}</span> : null}
+            </span>
+            <span className="row-age">{ageLabel(w.age)}</span>
+          </div>
+          <div className="row-notes">{w.notes}</div>
+        </div>
+        <div className="row-right">
+          <span className="row-abv">{w.abv}%</span>
+          <span className="row-price">
+            <span className="won">{"\u20A9"}</span><span className="num">{won(w.glass)}</span>
+          </span>
+          <Caret />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/* ---------- cover ---------- */
+function Cover({ visible, onEnter }) {
+  const longPressRef = useRef(null);
+  const pressedRef = useRef(false);
+
+  const handleLogoDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    pressedRef.current = true;
+    longPressRef.current = setTimeout(() => {
+      pressedRef.current = false;
+      window.location.href = './admin/';
+    }, 3000);
+  };
+  const handleLogoUp = (e) => {
+    e.stopPropagation();
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+    // Short tap on logo — enter menu after a brief delay (let click event pass)
+    if (pressedRef.current) {
+      pressedRef.current = false;
+      onEnter();
+    }
+  };
+
+  const handleCoverClick = (e) => {
+    // Don't enter menu if the logo is being long-pressed
+    if (pressedRef.current) return;
+    onEnter();
+  };
+
+  return (
+    <div className={"cover" + (visible ? "" : " hide")} onClick={handleCoverClick}>
+      <div className="cover-kicker">
+        <span className="kicker-rule" />
+        <span className="lbl">{INFO.kicker}</span>
+        <span className="kicker-rule r" />
+      </div>
+      <img className="cover-logo" src="assets/logo-light.png" alt="Bar Backroom"
+        onPointerDown={handleLogoDown} onPointerUp={handleLogoUp} onPointerCancel={handleLogoUp}
+        onClick={(e) => e.stopPropagation()} />
+      <div className="cover-tagline">{INFO.tagline}</div>
+      <p className="cover-story">{INFO.story}</p>
+      <div className="cover-divider" />
+      <div className="enter">
+        <span className="enter-dot" />
+        <span className="lbl">{"\uD0ED\uD558\uC5EC \uC785\uC7A5"} &middot; TAP TO ENTER</span>
+      </div>
+      <div className="cover-foot">
+        <span className="lbl">{INFO.hours}</span>
+        <span className="lbl">{INFO.place}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- menu ---------- */
+const SORTS = [
+  { key: "region", label: "\uC9C0\uC5ED\uBCC4" },
+  { key: "price", label: "\uAC00\uACA9\uC21C" },
+  { key: "abv", label: "\uB3C4\uC218\uC21C" },
+];
+
+function Menu({ show, onBack }) {
+  const [sort, setSort] = useState("region");
+  const [region, setRegion] = useState("all");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(null);
+  const listRef = useRef(null);
+
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(() => {
+    return WHISKEYS.filter((w) => {
+      if (region !== "all" && w.region !== region) return false;
+      if (q && !(w.name.toLowerCase().includes(q) || (REGION_MAP[w.region].en + REGION_MAP[w.region].ko).toLowerCase().includes(q)))
+        return false;
+      return true;
+    });
+  }, [region, q]);
+
+  const flat = q || sort !== "region";
+  const flatList = useMemo(() => {
+    const arr = [...matches];
+    if (sort === "abv") arr.sort((a, b) => a.abv - b.abv || a.glass - b.glass);
+    else arr.sort((a, b) => a.glass - b.glass);
+    return arr;
+  }, [matches, sort]);
+
+  const grouped = useMemo(() => {
+    return REGIONS
+      .filter((r) => region === "all" || r.key === region)
+      .map((r) => ({ region: r, items: matches.filter((w) => w.region === r.key).sort((a, b) => a.glass - b.glass) }))
+      .filter((g) => g.items.length);
+  }, [matches, region]);
+
+  const changeSort = (k) => { setSort(k); if (listRef.current) listRef.current.scrollTop = 0; };
+  const changeRegion = (k) => { setRegion(k); if (listRef.current) listRef.current.scrollTop = 0; };
+
+  let counter = 0;
+
+  return (
+    <div className={"menu" + (show ? " show" : "")}>
+      <div className="topbar">
+        <div className="brand" onClick={onBack} title="\uCC98\uC74C\uC73C\uB85C">
+          <img className="brand-logo" src="assets/logo-light.png" alt="Bar Backroom" />
+          <span className="brand-sub lbl">WHISKY LIST</span>
+        </div>
+        <div className="topbar-spacer" />
+        <div className="search">
+          <SearchIcon />
+          <input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); }}
+            placeholder={"\uC704\uC2A4\uD0A4 \xB7 \uC99D\uB958\uC18C \uAC80\uC0C9"}
+          />
+          {query ? <span className="clear" onClick={() => setQuery("")}>&times;</span> : null}
+        </div>
+      </div>
+
+      <div className="controls">
+        <div className="seg">
+          {SORTS.map((s) => (
+            <button key={s.key} className={sort === s.key ? "on" : ""} onClick={() => changeSort(s.key)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="controls-spacer" />
+        <span className="count lbl">{"\uCD1D"} <b>{matches.length}</b> {"\uC885"}</span>
+      </div>
+
+      <div className="chips">
+        <button className={"chip" + (region === "all" ? " on" : "")} onClick={() => changeRegion("all")}>
+          {"\uC804\uCCB4"}
+        </button>
+        {REGIONS.map((r) => (
+          <button key={r.key} className={"chip" + (region === r.key ? " on" : "")} onClick={() => changeRegion(r.key)}>
+            {r.ko}<span className="c-en">{r.en}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="list" ref={listRef}>
+        {matches.length === 0 ? (
+          <div className="empty">{"\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."}</div>
+        ) : flat ? (
+          <div className="section">
+            <div className="sec-head">
+              <span className="sec-ko">{q ? "\uAC80\uC0C9 \uACB0\uACFC" : sort === "abv" ? "\uB3C4\uC218 \uB0AE\uC740 \uC21C" : "\uAC00\uACA9 \uB0AE\uC740 \uC21C"}</span>
+              <span className="sec-en">{q ? "RESULTS" : sort === "abv" ? "BY ABV" : "BY PRICE"}</span>
+              <span className="sec-blurb" />
+              <span className="sec-count">{flatList.length}</span>
+            </div>
+            {flatList.map((w, i) => (
+              <Row key={w.id} w={w} idx={i} onOpen={() => setSelected(w)} />
+            ))}
+          </div>
+        ) : (
+          grouped.map((g) => (
+            <div className="section" key={g.region.key}>
+              <div className="sec-head">
+                <span className="sec-ko">{g.region.ko}</span>
+                <span className="sec-en">{g.region.en}</span>
+                <span className="sec-blurb">{g.region.blurb}</span>
+                <span className="sec-count">{g.items.length}</span>
+              </div>
+              {g.items.map((w) => {
+                const node = (
+                  <Row key={w.id} w={w} idx={counter} onOpen={() => setSelected(w)} />
+                );
+                counter++;
+                return node;
+              })}
+            </div>
+          ))
+        )}
+        <div className="menu-note">{INFO.note}</div>
+      </div>
+
+      {selected ? <WhiskeyModal w={selected} onClose={() => setSelected(null)} /> : null}
+    </div>
+  );
+}
+
+/* ---------- supabase data loader ---------- */
+function useSupabaseWhiskeys() {
+  const [dbWhiskeys, setDbWhiskeys] = useState(null);
+
+  useEffect(() => {
+    const url = window.__SUPABASE_URL;
+    const key = window.__SUPABASE_ANON_KEY;
+    if (!url || !key) return; // No Supabase configured, use fallback data
+
+    // Initial fetch
+    fetch(url + "/rest/v1/whiskeys?select=*&order=id", {
+      headers: { "apikey": key, "Authorization": "Bearer " + key }
+    })
+    .then(r => r.ok ? r.json() : Promise.reject("fetch failed"))
+    .then(rows => {
+      setDbWhiskeys(rows.map(function(r) {
+        return {
+          id: r.id, brand: r.brand, expr: r.expression,
+          name: (r.brand + " " + r.expression).trim(),
+          region: r.region, abv: r.abv, age: r.age, notes: r.notes,
+          glass: r.glass_price, bottle: r.bottle_price, photo: r.photo_url
+        };
+      }));
+    })
+    .catch(function() { console.warn("Supabase fetch failed, using local data"); });
+
+    // Real-time subscription for live updates
+    if (window.supabase && window.supabase.createClient) {
+      var client = window.supabase.createClient(url, key);
+      var channel = client.channel("menu-updates")
+        .on("postgres_changes", { event: "*", schema: "public", table: "whiskeys" }, function() {
+          // Re-fetch on any change
+          fetch(url + "/rest/v1/whiskeys?select=*&order=id", {
+            headers: { "apikey": key, "Authorization": "Bearer " + key }
+          })
+          .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+          .then(function(rows) {
+            setDbWhiskeys(rows.map(function(r) {
+              return {
+                id: r.id, brand: r.brand, expr: r.expression,
+                name: (r.brand + " " + r.expression).trim(),
+                region: r.region, abv: r.abv, age: r.age, notes: r.notes,
+                glass: r.glass_price, bottle: r.bottle_price, photo: r.photo_url
+              };
+            }));
+          })
+          .catch(function() {});
+        })
+        .subscribe();
+
+      return function() { client.removeChannel(channel); };
+    }
+  }, []);
+
+  return dbWhiskeys;
+}
+
+/* ---------- root ---------- */
+function App() {
+  const saved = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; }
+  }, []);
+  const [entered, setEntered] = useState(!!saved.entered);
+
+  // Use Supabase data if available, otherwise fall back to hardcoded WHISKEYS
+  const dbWhiskeys = useSupabaseWhiskeys();
+  if (dbWhiskeys) {
+    // Dynamically replace the WHISKEYS array when DB data is available
+    window.BACKROOM.WHISKEYS = dbWhiskeys;
+  }
+
+  useEffect(() => {
+    localStorage.setItem(LS, JSON.stringify({ entered }));
+  }, [entered]);
+
+  const enter = () => setEntered(true);
+  const back = () => setEntered(false);
+
+  return (
+    <div className="screen" data-theme={THEME}>
+      <Cover visible={!entered} onEnter={enter} />
+      <Menu show={entered} onBack={back} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("app")).render(<App />);
+  </script>
+</body>
+</html>
