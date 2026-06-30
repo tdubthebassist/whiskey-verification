@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
+
+[phases.install]
+cmds = ["npm install", "cd admin && npm install"]
+
+[phases.build]
+cmds = ["cd admin && npm run build", "node scripts/prepare-dist.js"]
+
+[start]
+cmd = "npx serve dist -l $PORT -s"
