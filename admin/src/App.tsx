@@ -3,9 +3,10 @@ import PinGate from './components/PinGate';
 import Dashboard from './components/Dashboard';
 import AddBottle from './components/AddBottle';
 import Settings from './components/Settings';
+import PricingSettings from './components/PricingSettings';
 import type { Whiskey } from './types';
 
-type View = 'pin' | 'dashboard' | 'add' | 'edit' | 'settings';
+type View = 'pin' | 'dashboard' | 'add' | 'edit' | 'settings' | 'pricing';
 
 function App() {
   const [view, setView] = useState<View>('pin');
@@ -33,6 +34,7 @@ function App() {
           onAdd={() => { setEditingWhiskey(null); setView('add'); }}
           onEdit={(w) => { setEditingWhiskey(w); setView('edit'); }}
           onSettings={() => setView('settings')}
+          onPricing={() => setView('pricing')}
           onLogout={handleLogout}
         />
       );
@@ -59,6 +61,14 @@ function App() {
     case 'settings':
       return (
         <Settings
+          pin={pin}
+          onBack={() => setView('dashboard')}
+        />
+      );
+
+    case 'pricing':
+      return (
+        <PricingSettings
           pin={pin}
           onBack={() => setView('dashboard')}
         />

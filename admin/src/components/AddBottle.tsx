@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { upsertWhiskey, identifyBottle } from '../lib/api';
-import { calculateGlassPrice, calculateBottlePrice } from '../lib/pricing';
+import { calculateGlassPrice, calculateBottlePrice, normalizePricingConfig } from '../lib/pricing';
 import { REFERENCE_WHISKEYS, searchWhiskeys } from '../data/reference-whiskeys';
 import PriceCalculator from './PriceCalculator';
 import type { Whiskey, WhiskeyInput, PricingConfig, Settings, ReferenceWhiskey } from '../types';
@@ -46,12 +46,12 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
   useEffect(() => {
     supabase.from('settings').select('*').eq('id', 1).single().then(({ data }) => {
       if (data) {
-        setConfig({
+        setConfig(normalizePricingConfig({
           pourSizeMl: (data as Settings).pour_size_ml,
           markupMultiplier: (data as Settings).markup_multiplier,
           marginPct: (data as Settings).margin_pct,
           roundingUnit: (data as Settings).rounding_unit,
-        });
+        }));
       }
     });
   }, []);
@@ -112,6 +112,21 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
   const handleSave = async () => {
     if (!brand.trim()) { alert('브랜드명을 입력해주세요.'); return; }
     if (!pricing) { alert('구매 가격을 입력해주세요.'); return; }
+
+    // Duplicate check (only for new whiskeys, not edits)
+    if (!editing) {
+      const { data: existing } = await supabase
+        .from('whiskeys')
+        .select('id, brand, expression')
+        .eq('brand', brand.trim())
+        .eq('expression', expression.trim());
+
+      if (existing && existing.length > 0) {
+        if (!confirm(`"${(brand + ' ' + expression).trim()}"은(는) 이미 등록되어 있습니다.\n그래도 추가하시겠습니까?`)) {
+          return;
+        }
+      }
+    }
 
     setSaving(true);
     try {
@@ -265,6 +280,16 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
               />
             </div>
 
+            <div style={styles.field}>
+              <label style={styles.label}>마진 (%)</label>
+              <input
+                style={{ ...styles.input, width: 100 }}
+                type="number"
+                value={config.marginPct}
+                onChange={(e) => setConfig({ ...config, marginPct: Number(e.target.value) || 0 })}
+              />
+            </div>
+
             <PriceCalculator
               bottleCost={costPrice}
               bottleVolumeMl={bottleVolume}
@@ -274,9 +299,14 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
             <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
               <button style={styles.backStepBtn} onClick={() => setStep('identify')}>&larr; 이전</button>
               <button
-                style={{ ...styles.nextBtn, flex: 1 }}
-                onClick={() => setStep('review')}
-                disabled={!costPrice}
+                style={{ ...styles.nextBtn, flex: 1, opacity: costPrice > 0 ? 1 : 0.4 }}
+                onClick={() => {
+                  if (!costPrice || costPrice <= 0) {
+                    alert('구매 가격을 입력해주세요.');
+                    return;
+                  }
+                  setStep('review');
+                }}
               >
                 다음: 확인 &rarr;
               </button>

@@ -59,7 +59,7 @@ export default function PinGate({ onSuccess }: PinGateProps) {
   };
 
   const handleBack = () => {
-    window.location.href = './Bar Backroom Menu.html';
+    window.location.href = '/';
   };
 
   return (
@@ -80,6 +80,7 @@ export default function PinGate({ onSuccess }: PinGateProps) {
           ))}
         </div>
 
+        {loading && <p style={styles.status}>확인 중...</p>}
         {error && <p style={styles.error}>{error}</p>}
         {cooldown > 0 && <p style={styles.cooldown}>{cooldown}s</p>}
 
@@ -160,6 +161,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: '"Nanum Myeongjo", serif',
     margin: 0,
   },
+  status: {
+    color: '#837763',
+    fontSize: 14,
+    fontFamily: '"Nanum Myeongjo", serif',
+    margin: 0,
+  },
   cooldown: {
     color: '#cd924a',
     fontSize: 24,
@@ -188,6 +195,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   back: {
     marginTop: 24,
+    padding: '12px 24px',
     background: 'none',
     border: 'none',
     color: '#837763',

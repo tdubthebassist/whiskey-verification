@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { calculateGlassPrice, calculateBottlePrice, formatKRW } from '../lib/pricing';
+import { calculateGlassPrice, calculateBottlePrice, formatKRW, normalizePricingConfig } from '../lib/pricing';
 import type { PricingConfig } from '../types';
 
 interface PriceCalculatorProps {
@@ -13,14 +13,15 @@ export default function PriceCalculator({
   bottleVolumeMl,
   config,
 }: PriceCalculatorProps) {
+  const safeConfig = useMemo(() => normalizePricingConfig(config), [config]);
   const result = useMemo(
-    () => calculateGlassPrice(bottleCost, bottleVolumeMl, config),
-    [bottleCost, bottleVolumeMl, config],
+    () => calculateGlassPrice(bottleCost, bottleVolumeMl, safeConfig),
+    [bottleCost, bottleVolumeMl, safeConfig],
   );
 
   const bottleSellingPrice = useMemo(
-    () => calculateBottlePrice(result.finalPrice, bottleVolumeMl, config.pourSizeMl),
-    [result.finalPrice, bottleVolumeMl, config.pourSizeMl],
+    () => calculateBottlePrice(result.finalPrice, bottleVolumeMl, safeConfig.pourSizeMl),
+    [result.finalPrice, bottleVolumeMl, safeConfig.pourSizeMl],
   );
 
   if (!bottleCost || bottleCost <= 0) {
@@ -39,7 +40,7 @@ export default function PriceCalculator({
         <div style={styles.step}>
           <span style={styles.label}>잔 수</span>
           <span style={styles.value}>
-            {bottleVolumeMl}ml &divide; {config.pourSizeMl.toFixed(1)}ml ={' '}
+            {bottleVolumeMl}ml ÷ {safeConfig.pourSizeMl.toFixed(1)}ml ={' '}
             <strong>{result.pourCount.toFixed(1)}</strong> 잔
           </span>
         </div>
@@ -47,24 +48,24 @@ export default function PriceCalculator({
         <div style={styles.step}>
           <span style={styles.label}>잔당 원가</span>
           <span style={styles.value}>
-            &won;{formatKRW(bottleCost)} &divide; {result.pourCount.toFixed(1)} ={' '}
-            <strong>&won;{formatKRW(Math.round(result.costPerPour))}</strong>
+            ₩{formatKRW(bottleCost)} ÷ {result.pourCount.toFixed(1)} ={' '}
+            <strong>₩{formatKRW(Math.round(result.costPerPour))}</strong>
           </span>
         </div>
 
         <div style={styles.step}>
-          <span style={styles.label}>기본가 (&times;{config.markupMultiplier})</span>
+          <span style={styles.label}>기본가 (&times;{safeConfig.markupMultiplier})</span>
           <span style={styles.value}>
-            &won;{formatKRW(Math.round(result.costPerPour))} &times; {config.markupMultiplier} ={' '}
-            <strong>&won;{formatKRW(Math.round(result.basePrice))}</strong>
+            ₩{formatKRW(Math.round(result.costPerPour))} × {safeConfig.markupMultiplier} ={' '}
+            <strong>₩{formatKRW(Math.round(result.basePrice))}</strong>
           </span>
         </div>
 
         <div style={styles.step}>
-          <span style={styles.label}>마진 (+{config.marginPct}%)</span>
+          <span style={styles.label}>마진 (+{safeConfig.marginPct}%)</span>
           <span style={styles.value}>
-            &won;{formatKRW(Math.round(result.basePrice))} + {config.marginPct}% ={' '}
-            <strong>&won;{formatKRW(Math.round(result.withMargin))}</strong>
+            ₩{formatKRW(Math.round(result.basePrice))} + {safeConfig.marginPct}% ={' '}
+            <strong>₩{formatKRW(Math.round(result.withMargin))}</strong>
           </span>
         </div>
 
@@ -74,18 +75,18 @@ export default function PriceCalculator({
           <div style={styles.finalCard}>
             <span style={styles.finalLabel}>잔 · GLASS</span>
             <span style={styles.finalPrice}>
-              <span style={styles.won}>&won;</span>
+              <span style={styles.won}>₩</span>
               {formatKRW(result.finalPrice)}
             </span>
             <span style={styles.rounding}>
-              (&won;{config.roundingUnit.toLocaleString()} 단위 반올림)
+              (₩{safeConfig.roundingUnit.toLocaleString()} 단위 반올림)
             </span>
           </div>
 
           <div style={styles.finalCard}>
             <span style={styles.finalLabel}>보틀 · BOTTLE</span>
             <span style={styles.finalPrice}>
-              <span style={styles.won}>&won;</span>
+              <span style={styles.won}>₩</span>
               {formatKRW(bottleSellingPrice)}
             </span>
           </div>

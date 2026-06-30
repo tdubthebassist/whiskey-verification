@@ -34,11 +34,14 @@ async function hashPin(pin: string): Promise<string> {
 }
 
 export async function validatePin(pin: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8000);
   try {
     // Read pin_hash from settings table (publicly readable via RLS)
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/settings?select=pin_hash&id=eq.1`,
       {
+        signal: controller.signal,
         headers: {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
@@ -53,6 +56,8 @@ export async function validatePin(pin: string): Promise<boolean> {
     return inputHash === storedHash;
   } catch {
     return false;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -74,8 +79,9 @@ export async function deleteWhiskey(
 export async function updateSettings(
   pin: string,
   settings: Partial<Settings>,
+  newPin?: string,
 ): Promise<{ success: boolean }> {
-  return callEdgeFunction('update-settings', { pin, settings });
+  return callEdgeFunction('update-settings', { pin, settings, newPin });
 }
 
 export async function identifyBottle(

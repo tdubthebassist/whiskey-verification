@@ -4,14 +4,25 @@ const path = require('path');
 const DIST = path.join(__dirname, '..', 'dist');
 const ROOT = path.join(__dirname, '..');
 
-// Create dist directory
+// Recreate dist so stale build artifacts are not served.
+fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
 
-// Copy customer menu HTML
-fs.copyFileSync(
-  path.join(ROOT, 'Bar Backroom Menu.html'),
-  path.join(DIST, 'index.html'),
-);
+// Copy customer menu HTML and inject Supabase config
+let menuHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf-8');
+if (process.env.VITE_SUPABASE_URL) {
+  menuHtml = menuHtml.replace(
+    "window.__SUPABASE_URL = '';",
+    `window.__SUPABASE_URL = '${process.env.VITE_SUPABASE_URL}';`,
+  );
+}
+if (process.env.VITE_SUPABASE_ANON_KEY) {
+  menuHtml = menuHtml.replace(
+    "window.__SUPABASE_ANON_KEY = '';",
+    `window.__SUPABASE_ANON_KEY = '${process.env.VITE_SUPABASE_ANON_KEY}';`,
+  );
+}
+fs.writeFileSync(path.join(DIST, 'index.html'), menuHtml);
 
 // Copy assets
 copyDir(path.join(ROOT, 'assets'), path.join(DIST, 'assets'));

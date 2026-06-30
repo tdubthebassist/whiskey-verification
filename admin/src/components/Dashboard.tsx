@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { deleteWhiskey } from '../lib/api';
+import { deleteWhiskey, upsertWhiskey } from '../lib/api';
 import { formatKRW } from '../lib/pricing';
+import { MENU_WHISKEYS } from '../data/menu-whiskeys';
 import type { Whiskey } from '../types';
 
 interface DashboardProps {
@@ -9,13 +10,15 @@ interface DashboardProps {
   onAdd: () => void;
   onEdit: (whiskey: Whiskey) => void;
   onSettings: () => void;
+  onPricing: () => void;
   onLogout: () => void;
 }
 
-export default function Dashboard({ pin, onAdd, onEdit, onSettings, onLogout }: DashboardProps) {
+export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, onLogout }: DashboardProps) {
   const [whiskeys, setWhiskeys] = useState<Whiskey[]>([]);
   const [query, setQuery] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -39,6 +42,37 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onLogout }: 
       })
     : whiskeys;
 
+  const handleImportMenu = async () => {
+    if (!confirm(`메뉴의 위스키 ${MENU_WHISKEYS.length}종을 일괄 등록하시겠습니까?\n이미 등록된 위스키는 건너뜁니다.`)) return;
+    setImporting(true);
+    try {
+      const existing = new Set(whiskeys.map((w) => `${w.brand}||${w.expression}`));
+      const toImport = MENU_WHISKEYS.filter((w) => !existing.has(`${w.brand}||${w.expression}`));
+
+      if (toImport.length === 0) {
+        alert('모든 메뉴 위스키가 이미 등록되어 있습니다.');
+        setImporting(false);
+        return;
+      }
+
+      let success = 0;
+      let fail = 0;
+      // Import in batches of 5 to avoid overloading
+      for (let i = 0; i < toImport.length; i += 5) {
+        const batch = toImport.slice(i, i + 5);
+        const results = await Promise.allSettled(
+          batch.map((w) => upsertWhiskey(pin, w))
+        );
+        results.forEach((r) => { if (r.status === 'fulfilled') success++; else fail++; });
+      }
+
+      alert(`완료: ${success}종 등록${fail > 0 ? `, ${fail}종 실패` : ''}`);
+    } catch (e) {
+      alert('일괄 등록 실패: ' + (e as Error).message);
+    }
+    setImporting(false);
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm('이 위스키를 삭제하시겠습니까?')) return;
     setDeleting(id);
@@ -52,7 +86,7 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onLogout }: 
 
   const handleBack = () => {
     onLogout();
-    window.location.href = './Bar Backroom Menu.html';
+    window.location.href = '../';
   };
 
   return (
@@ -63,7 +97,8 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onLogout }: 
           <span style={styles.count}>{whiskeys.length}종</span>
         </div>
         <div style={styles.headerRight}>
-          <button style={styles.settingsBtn} onClick={onSettings}>설정</button>
+          <button style={styles.settingsBtn} onClick={onPricing}>가격 공식</button>
+          <button style={styles.settingsBtn} onClick={onSettings}>PIN 설정</button>
           <button style={styles.backBtn} onClick={handleBack}>메뉴로 돌아가기</button>
         </div>
       </header>
@@ -80,6 +115,13 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onLogout }: 
             <span style={styles.clear} onClick={() => setQuery('')}>&times;</span>
           )}
         </div>
+        <button
+          style={{ ...styles.importBtn, opacity: importing ? 0.5 : 1 }}
+          onClick={handleImportMenu}
+          disabled={importing}
+        >
+          {importing ? '등록 중...' : `메뉴 일괄 등록 (${MENU_WHISKEYS.length}종)`}
+        </button>
         <button style={styles.addBtn} onClick={onAdd}>+ 새 위스키 추가</button>
       </div>
 
@@ -140,7 +182,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '20px 32px', borderBottom: '1px solid rgba(221,201,166,0.13)',
   },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 16 },
-  headerRight: { display: 'flex', gap: 12 },
+  headerRight: { display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' },
   title: {
     fontFamily: '"Cormorant Garamond", serif', fontSize: 22, fontWeight: 700,
     color: '#cd924a', letterSpacing: '0.15em', margin: 0,
@@ -148,7 +190,7 @@ const styles: Record<string, React.CSSProperties> = {
   count: { color: '#837763', fontSize: 14 },
   settingsBtn: {
     background: '#1d1712', border: '1px solid rgba(221,201,166,0.2)',
-    borderRadius: 8, padding: '8px 16px', color: '#b8aa90', fontSize: 13,
+    borderRadius: 8, padding: '9px 14px', color: '#b8aa90', fontSize: 13,
     fontFamily: '"Nanum Myeongjo", serif', cursor: 'pointer',
   },
   backBtn: {
@@ -168,6 +210,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   clear: {
     position: 'absolute', right: 12, color: '#837763', cursor: 'pointer', fontSize: 18,
+  },
+  importBtn: {
+    background: '#1d1712', border: '1px solid rgba(205,146,74,0.4)',
+    borderRadius: 8, padding: '10px 16px', color: '#cd924a', fontSize: 13,
+    fontFamily: '"Cormorant Garamond", serif', letterSpacing: '0.05em',
+    cursor: 'pointer', whiteSpace: 'nowrap' as const,
   },
   addBtn: {
     background: '#cd924a', color: '#1a130c', border: 'none', borderRadius: 8,

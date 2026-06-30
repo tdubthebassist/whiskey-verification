@@ -7,6 +7,30 @@ export const DEFAULT_CONFIG: PricingConfig = {
   roundingUnit: 1000,
 };
 
+export function normalizePricingConfig(
+  config: Partial<PricingConfig> | null | undefined,
+): PricingConfig {
+  const pourSizeMl = Number(config?.pourSizeMl);
+  const markupMultiplier = Number(config?.markupMultiplier);
+  const marginPct = Number(config?.marginPct);
+  const roundingUnit = Number(config?.roundingUnit);
+
+  return {
+    pourSizeMl: Number.isFinite(pourSizeMl) && pourSizeMl > 0
+      ? pourSizeMl
+      : DEFAULT_CONFIG.pourSizeMl,
+    markupMultiplier: Number.isFinite(markupMultiplier) && markupMultiplier > 0
+      ? markupMultiplier
+      : DEFAULT_CONFIG.markupMultiplier,
+    marginPct: Number.isFinite(marginPct) && marginPct >= 0
+      ? marginPct
+      : DEFAULT_CONFIG.marginPct,
+    roundingUnit: Number.isFinite(roundingUnit) && roundingUnit > 0
+      ? roundingUnit
+      : DEFAULT_CONFIG.roundingUnit,
+  };
+}
+
 /**
  * Calculate glass price from bottle cost using the bar's pricing formula.
  *
@@ -25,12 +49,15 @@ export function calculateGlassPrice(
   bottleVolumeMl: number,
   config: PricingConfig = DEFAULT_CONFIG,
 ): PricingResult {
-  const pourCount = bottleVolumeMl / config.pourSizeMl;
-  const costPerPour = bottleCostKrw / pourCount;
-  const basePrice = costPerPour * config.markupMultiplier;
-  const withMargin = basePrice * (1 + config.marginPct / 100);
+  const safeConfig = normalizePricingConfig(config);
+  const safeBottleCost = Number.isFinite(bottleCostKrw) && bottleCostKrw > 0 ? bottleCostKrw : 0;
+  const safeBottleVolume = Number.isFinite(bottleVolumeMl) && bottleVolumeMl > 0 ? bottleVolumeMl : 700;
+  const pourCount = safeBottleVolume / safeConfig.pourSizeMl;
+  const costPerPour = safeBottleCost / pourCount;
+  const basePrice = costPerPour * safeConfig.markupMultiplier;
+  const withMargin = basePrice * (1 + safeConfig.marginPct / 100);
   const finalPrice =
-    Math.round(withMargin / config.roundingUnit) * config.roundingUnit;
+    Math.round(withMargin / safeConfig.roundingUnit) * safeConfig.roundingUnit;
 
   return { pourCount, costPerPour, basePrice, withMargin, finalPrice };
 }
@@ -43,8 +70,12 @@ export function calculateBottlePrice(
   bottleVolumeMl: number,
   pourSizeMl: number = DEFAULT_CONFIG.pourSizeMl,
 ): number {
-  const pourCount = bottleVolumeMl / pourSizeMl;
-  return Math.round(glassPrice * pourCount);
+  const safePourSize = Number.isFinite(pourSizeMl) && pourSizeMl > 0 ? pourSizeMl : DEFAULT_CONFIG.pourSizeMl;
+  const safeBottleVolume = Number.isFinite(bottleVolumeMl) && bottleVolumeMl > 0 ? bottleVolumeMl : 700;
+  const safeGlassPrice = Number.isFinite(glassPrice) && glassPrice > 0 ? glassPrice : 0;
+  const pourCount = safeBottleVolume / safePourSize;
+  const raw = safeGlassPrice * pourCount;
+  return Math.floor(raw / 1000) * 1000;
 }
 
 /**

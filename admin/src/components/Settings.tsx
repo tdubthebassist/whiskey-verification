@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState } from 'react';
 import { updateSettings } from '../lib/api';
-import type { Settings as SettingsType } from '../types';
 
 interface SettingsProps {
   pin: string;
@@ -9,60 +7,30 @@ interface SettingsProps {
 }
 
 export default function Settings({ pin, onBack }: SettingsProps) {
-  const [pourSize, setPourSize] = useState(29.5735);
-  const [multiplier, setMultiplier] = useState(3.0);
-  const [marginPct, setMarginPct] = useState(15);
-  const [roundingUnit, setRoundingUnit] = useState(1000);
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    supabase
-      .from('settings')
-      .select('*')
-      .eq('id', 1)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          const s = data as SettingsType;
-          setPourSize(s.pour_size_ml);
-          setMultiplier(s.markup_multiplier);
-          setMarginPct(s.margin_pct);
-          setRoundingUnit(s.rounding_unit);
-        }
-      });
-  }, []);
-
   const handleSave = async () => {
-    if (newPin && newPin !== confirmPin) {
-      setMessage('PIN이 일치하지 않습니다.');
+    if (!newPin) {
+      setMessage('변경할 PIN을 입력해주세요.');
       return;
     }
-    if (newPin && newPin.length !== 4) {
+    if (newPin.length !== 4) {
       setMessage('PIN은 4자리여야 합니다.');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setMessage('PIN이 일치하지 않습니다.');
       return;
     }
 
     setSaving(true);
     setMessage('');
     try {
-      const body: Record<string, unknown> = {
-        pin,
-        settings: {
-          pour_size_ml: pourSize,
-          markup_multiplier: multiplier,
-          margin_pct: marginPct,
-          rounding_unit: roundingUnit,
-        },
-      };
-      if (newPin) {
-        (body as Record<string, unknown>).newPin = newPin;
-      }
-
-      await updateSettings(pin, body as never);
-      setMessage('설정이 저장되었습니다.');
+      await updateSettings(pin, {}, newPin);
+      setMessage('PIN이 변경되었습니다.');
       setNewPin('');
       setConfirmPin('');
     } catch (err) {
@@ -75,70 +43,10 @@ export default function Settings({ pin, onBack }: SettingsProps) {
     <div style={styles.container}>
       <header style={styles.header}>
         <button style={styles.backBtn} onClick={onBack}>&larr; 돌아가기</button>
-        <h2 style={styles.title}>설정 · SETTINGS</h2>
+        <h2 style={styles.title}>보안 설정 · PIN</h2>
       </header>
 
       <div style={styles.body}>
-        <div style={styles.card}>
-          <h3 style={styles.sectionTitle}>가격 계산 공식</h3>
-
-          <div style={styles.field}>
-            <label style={styles.label}>잔 크기 (ml)</label>
-            <input
-              style={styles.input}
-              type="number"
-              step="0.01"
-              value={pourSize}
-              onChange={(e) => setPourSize(Number(e.target.value))}
-            />
-            <span style={styles.hint}>기본값: 29.5735ml (1 oz)</span>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>마크업 배수</label>
-            <input
-              style={styles.input}
-              type="number"
-              step="0.1"
-              value={multiplier}
-              onChange={(e) => setMultiplier(Number(e.target.value))}
-            />
-            <span style={styles.hint}>기본값: 3.0 (원가의 3배)</span>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>마진 (%)</label>
-            <input
-              style={styles.input}
-              type="number"
-              step="1"
-              value={marginPct}
-              onChange={(e) => setMarginPct(Number(e.target.value))}
-            />
-            <span style={styles.hint}>기본값: 15%</span>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>반올림 단위 (₩)</label>
-            <select
-              style={styles.input}
-              value={roundingUnit}
-              onChange={(e) => setRoundingUnit(Number(e.target.value))}
-            >
-              <option value={500}>₩500</option>
-              <option value={1000}>₩1,000</option>
-              <option value={5000}>₩5,000</option>
-            </select>
-          </div>
-
-          <div style={styles.formula}>
-            <span style={styles.formulaLabel}>현재 공식:</span>
-            <code style={styles.formulaCode}>
-              (원가 &divide; ({pourSize.toFixed(1)}ml 잔)) &times; {multiplier} + {marginPct}% &rarr; ₩{roundingUnit.toLocaleString()} 단위
-            </code>
-          </div>
-        </div>
-
         <div style={styles.card}>
           <h3 style={styles.sectionTitle}>PIN 변경</h3>
 
@@ -154,32 +62,32 @@ export default function Settings({ pin, onBack }: SettingsProps) {
             />
           </div>
 
-          {newPin && (
-            <div style={styles.field}>
-              <label style={styles.label}>PIN 확인</label>
-              <input
-                style={styles.input}
-                type="password"
-                maxLength={4}
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                placeholder="다시 입력"
-              />
-            </div>
-          )}
+          <div style={styles.field}>
+            <label style={styles.label}>PIN 확인</label>
+            <input
+              style={styles.input}
+              type="password"
+              maxLength={4}
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+              placeholder="다시 입력"
+            />
+          </div>
         </div>
 
         {message && (
           <p style={{
             ...styles.message,
-            color: message.includes('실패') || message.includes('일치') ? '#c2603a' : '#6fae8e',
+            color: message.includes('실패') || message.includes('일치') || message.includes('4자리') || message.includes('입력')
+              ? '#c2603a'
+              : '#6fae8e',
           }}>
             {message}
           </p>
         )}
 
         <button style={styles.saveBtn} onClick={handleSave} disabled={saving}>
-          {saving ? '저장 중...' : '설정 저장'}
+          {saving ? '저장 중...' : 'PIN 저장'}
         </button>
       </div>
     </div>
@@ -227,12 +135,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: '"Nanum Myeongjo", serif', outline: 'none', boxSizing: 'border-box' as const,
   },
   hint: { color: '#837763', fontSize: 11 },
-  formula: {
-    marginTop: 12, padding: 12, background: '#241c15', borderRadius: 8,
-    border: '1px solid rgba(205,146,74,0.2)',
-  },
-  formulaLabel: { color: '#837763', fontSize: 12, display: 'block', marginBottom: 6 },
-  formulaCode: { color: '#cd924a', fontSize: 13, fontFamily: 'monospace' },
   message: { fontSize: 14, textAlign: 'center' },
   saveBtn: {
     width: '100%', maxWidth: 500, padding: '14px 24px', background: '#cd924a',
