@@ -14,10 +14,10 @@ interface AddBottleProps {
   onCancel: () => void;
 }
 
-type Step = 'identify' | 'cost' | 'review';
+type Step = 'identify' | 'cost' | 'review' | 'edit';
 
 export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleProps) {
-  const [step, setStep] = useState<Step>(editing ? 'review' : 'identify');
+  const [step, setStep] = useState<Step>(editing ? 'edit' : 'identify');
 
   // Form state
   const [brand, setBrand] = useState(editing?.brand ?? '');
@@ -130,7 +130,9 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
 
   const handleSave = async () => {
     if (!brand.trim()) { alert('브랜드명을 입력해주세요.'); return; }
-    if (!pricing) { alert('구매 가격을 입력해주세요.'); return; }
+
+    // For new whiskeys, pricing is required
+    if (!editing && !pricing) { alert('구매 가격을 입력해주세요.'); return; }
 
     // Duplicate check (only for new whiskeys, not edits)
     if (!editing) {
@@ -149,6 +151,12 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
 
     setSaving(true);
     try {
+      // When editing without changing cost, keep existing prices
+      const glassPrice = pricing ? pricing.finalPrice : editing!.glass_price;
+      const bottlePrice = pricing
+        ? calculateBottlePrice(pricing.finalPrice, bottleVolume, config.pourSizeMl)
+        : editing!.bottle_price;
+
       const input: WhiskeyInput = {
         brand: brand.trim(),
         expression: expression.trim(),
@@ -156,9 +164,9 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
         abv,
         age,
         notes: notes.trim(),
-        glass_price: pricing.finalPrice,
-        bottle_price: calculateBottlePrice(pricing.finalPrice, bottleVolume, config.pourSizeMl),
-        cost_price: costPrice,
+        glass_price: glassPrice,
+        bottle_price: bottlePrice,
+        cost_price: costPrice || editing?.cost_price || null,
         photo_url: editing?.photo_url ?? null,
         bottle_volume_ml: bottleVolume,
       };
@@ -176,15 +184,17 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
       <header style={styles.header}>
         <button style={styles.cancelBtn} onClick={onCancel}>&larr; 돌아가기</button>
         <h2 style={styles.title}>{editing ? '위스키 수정' : '새 위스키 추가'}</h2>
-        <div style={styles.steps}>
-          {(['identify', 'cost', 'review'] as Step[]).map((s, i) => (
-            <span key={s} style={{
-              ...styles.stepDot,
-              background: step === s ? '#cd924a' : i <= ['identify', 'cost', 'review'].indexOf(step)
-                ? 'rgba(205,146,74,0.5)' : 'rgba(221,201,166,0.2)',
-            }} />
-          ))}
-        </div>
+        {!editing && (
+          <div style={styles.steps}>
+            {(['identify', 'cost', 'review'] as Step[]).map((s, i) => (
+              <span key={s} style={{
+                ...styles.stepDot,
+                background: step === s ? '#cd924a' : i <= ['identify', 'cost', 'review'].indexOf(step)
+                  ? 'rgba(205,146,74,0.5)' : 'rgba(221,201,166,0.2)',
+              }} />
+            ))}
+          </div>
+        )}
       </header>
 
       <div style={styles.body}>
@@ -402,9 +412,94 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
                 onClick={handleSave}
                 disabled={saving}
               >
-                {saving ? '저장 중...' : editing ? '수정 완료' : '메뉴에 추가'}
+                {saving ? '저장 중...' : '메뉴에 추가'}
               </button>
             </div>
+          </div>
+        )}
+
+        {step === 'edit' && (
+          <div style={styles.section}>
+            <h3 style={styles.sectionTitle}>위스키 정보 수정</h3>
+
+            <div style={styles.formGrid}>
+              <div style={styles.field}>
+                <label style={styles.label}>브랜드 *</label>
+                <input style={styles.input} value={brand} onChange={(e) => setBrand(e.target.value)} />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>표현식</label>
+                <input style={styles.input} value={expression} onChange={(e) => setExpression(e.target.value)} />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>지역</label>
+                <select style={styles.input} value={region} onChange={(e) => setRegion(e.target.value)}>
+                  {REGIONS.map((r) => <option key={r.key} value={r.key}>{r.ko} ({r.en})</option>)}
+                </select>
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>ABV (%)</label>
+                <input style={styles.input} type="number" step="0.1" value={abv} onChange={(e) => setAbv(Number(e.target.value))} />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>숙성 (년)</label>
+                <input style={styles.input} type="number" value={age ?? ''} onChange={(e) => setAge(e.target.value ? Number(e.target.value) : null)} placeholder="NAS" />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>용량 (ml)</label>
+                <input style={styles.input} type="number" value={bottleVolume} onChange={(e) => setBottleVolume(Number(e.target.value))} />
+              </div>
+            </div>
+
+            <div style={styles.field}>
+              <label style={styles.label}>테이스팅 노트</label>
+              <textarea style={{ ...styles.input, height: 60, resize: 'vertical' }} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+
+            <div style={{ ...styles.field, marginTop: 16 }}>
+              <label style={styles.label}>구매 가격 (₩) — 변경 시 잔/보틀 가격 재계산</label>
+              <input
+                style={{ ...styles.input, fontSize: 20, fontWeight: 700, textAlign: 'right' }}
+                type="number"
+                value={costPrice || ''}
+                onChange={(e) => setCostPrice(Number(e.target.value))}
+                placeholder={editing?.cost_price ? String(editing.cost_price) : '미입력'}
+              />
+            </div>
+
+            {pricing && (
+              <div style={{ ...styles.reviewCard, marginTop: 12 }}>
+                <div style={styles.reviewRow}>
+                  <span style={{ ...styles.reviewLabel, color: '#cd924a' }}>잔 가격</span>
+                  <span style={{ color: '#cd924a', fontWeight: 700, fontSize: 18 }}>₩{pricing.finalPrice.toLocaleString('ko-KR')}</span>
+                </div>
+                <div style={styles.reviewRow}>
+                  <span style={styles.reviewLabel}>보틀 가격</span>
+                  <span>₩{calculateBottlePrice(pricing.finalPrice, bottleVolume, config.pourSizeMl).toLocaleString('ko-KR')}</span>
+                </div>
+              </div>
+            )}
+
+            {!pricing && editing && (
+              <div style={{ ...styles.reviewCard, marginTop: 12 }}>
+                <div style={styles.reviewRow}>
+                  <span style={{ ...styles.reviewLabel, color: '#cd924a' }}>현재 잔 가격</span>
+                  <span style={{ color: '#cd924a', fontWeight: 700, fontSize: 18 }}>₩{editing.glass_price.toLocaleString('ko-KR')}</span>
+                </div>
+                <div style={styles.reviewRow}>
+                  <span style={styles.reviewLabel}>현재 보틀 가격</span>
+                  <span>₩{editing.bottle_price.toLocaleString('ko-KR')}</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              style={{ ...styles.saveBtn, width: '100%', marginTop: 20 }}
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? '저장 중...' : '수정 완료'}
+            </button>
           </div>
         )}
       </div>
