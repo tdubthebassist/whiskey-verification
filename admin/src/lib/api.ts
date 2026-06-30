@@ -84,6 +84,21 @@ export async function updateSettings(
   return callEdgeFunction('update-settings', { pin, settings, newPin });
 }
 
+export async function searchPrice(
+  pin: string,
+  brand: string,
+  expression: string,
+): Promise<{
+  prices: Array<{
+    name: string;
+    price: number;
+    volume_ml: number | null;
+    source: string;
+  }>;
+}> {
+  return callEdgeFunction('search-price', { pin, brand, expression });
+}
+
 export async function identifyBottle(
   pin: string,
   photoBase64: string,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { upsertWhiskey, identifyBottle } from '../lib/api';
+import { upsertWhiskey, identifyBottle, searchPrice } from '../lib/api';
 import { calculateGlassPrice, calculateBottlePrice, normalizePricingConfig } from '../lib/pricing';
 import { REFERENCE_WHISKEYS, searchWhiskeys } from '../data/reference-whiskeys';
 import PriceCalculator from './PriceCalculator';
@@ -35,6 +35,10 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
 
   // Photo state
   const [photoLoading, setPhotoLoading] = useState(false);
+
+  // Web price search state
+  const [priceSearching, setPriceSearching] = useState(false);
+  const [priceResults, setPriceResults] = useState<Array<{ name: string; price: number; volume_ml: number | null; source: string }>>([]);
 
   // Settings
   const [config, setConfig] = useState<PricingConfig>({
@@ -101,6 +105,21 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
       alert('인식 실패: ' + (err as Error).message + '\n수동으로 입력해주세요.');
     }
     setPhotoLoading(false);
+  };
+
+  const handleSearchPrice = async () => {
+    setPriceSearching(true);
+    setPriceResults([]);
+    try {
+      const result = await searchPrice(pin, brand, expression);
+      setPriceResults(result.prices || []);
+      if (!result.prices?.length) {
+        alert('검색 결과가 없습니다.');
+      }
+    } catch (err) {
+      alert('가격 검색 실패: ' + (err as Error).message);
+    }
+    setPriceSearching(false);
   };
 
   // Calculate prices
@@ -280,6 +299,39 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
               />
             </div>
 
+            <button
+              style={{ ...styles.webSearchBtn, opacity: priceSearching ? 0.5 : 1 }}
+              onClick={handleSearchPrice}
+              disabled={priceSearching}
+            >
+              {priceSearching ? '검색 중...' : '🔍 AI 가격 추정 (한국 시장가)'}
+            </button>
+
+            {priceResults.length > 0 && (
+              <div style={styles.priceResults}>
+                <label style={styles.label}>검색 결과</label>
+                {priceResults.map((r, i) => (
+                  <button
+                    key={i}
+                    style={styles.priceResultItem}
+                    onClick={() => {
+                      setCostPrice(r.price);
+                      if (r.volume_ml) setBottleVolume(r.volume_ml);
+                      setPriceResults([]);
+                    }}
+                  >
+                    <span style={{ flex: 1, fontSize: 13 }}>{r.name}</span>
+                    <span style={{ color: '#cd924a', fontWeight: 700, fontSize: 16 }}>
+                      ₩{r.price.toLocaleString('ko-KR')}
+                    </span>
+                    <span style={{ color: '#837763', fontSize: 11 }}>
+                      {r.volume_ml ? `${r.volume_ml}ml` : ''} · {r.source}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div style={styles.field}>
               <label style={styles.label}>마진 (%)</label>
               <input
@@ -436,6 +488,24 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '14px 24px', background: '#cd924a', color: '#1a130c',
     border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 700,
     fontFamily: '"Cormorant Garamond", serif', cursor: 'pointer',
+  },
+  webSearchBtn: {
+    width: '100%', padding: '12px 16px', marginBottom: 12,
+    background: '#1d1712', border: '1px dashed rgba(205,146,74,0.4)',
+    borderRadius: 8, color: '#cd924a', fontSize: 14,
+    fontFamily: '"Nanum Myeongjo", serif', cursor: 'pointer',
+  },
+  priceResults: {
+    background: '#1d1712', border: '1px solid rgba(221,201,166,0.13)',
+    borderRadius: 8, padding: 12, marginBottom: 12,
+    display: 'flex', flexDirection: 'column' as const, gap: 4,
+  },
+  priceResultItem: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    width: '100%', padding: '10px 12px', background: 'none',
+    border: '1px solid rgba(221,201,166,0.08)', borderRadius: 6,
+    color: '#ece0cd', cursor: 'pointer', textAlign: 'left' as const,
+    fontFamily: '"Nanum Myeongjo", serif', transition: 'border-color 0.15s',
   },
   reviewCard: {
     background: '#1d1712', border: '1px solid rgba(221,201,166,0.13)',
