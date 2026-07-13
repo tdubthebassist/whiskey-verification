@@ -370,8 +370,8 @@
   <script>
 /* ===================== SUPABASE CONFIG ===================== */
 /* Set these after creating your Supabase project */
-window.__SUPABASE_URL = '';  // e.g. 'https://xxxx.supabase.co'
-window.__SUPABASE_ANON_KEY = '';  // your anon/public key
+window.__SUPABASE_URL = 'https://ezfuzilaredrwhoowjkp.supabase.co';
+window.__SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6ZnV6aWxhcmVkcndob293amtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjI3MTksImV4cCI6MjA5NzQzODcxOX0.S0oM0xIOj23GuTvrNp7ZLS3dA40cI0tEbVc3cTKcct0';
 
 /* ===================== DATA ===================== */
 window.BACKROOM = (function () {
@@ -707,7 +707,7 @@ const SORTS = [
   { key: "abv", label: "\uB3C4\uC218\uC21C" },
 ];
 
-function Menu({ show, onBack }) {
+function Menu({ show, onBack, whiskeys = [] }) {
   const [sort, setSort] = useState("region");
   const [region, setRegion] = useState("all");
   const [query, setQuery] = useState("");
@@ -716,13 +716,13 @@ function Menu({ show, onBack }) {
 
   const q = query.trim().toLowerCase();
   const matches = useMemo(() => {
-    return WHISKEYS.filter((w) => {
+    return whiskeys.filter((w) => {
       if (region !== "all" && w.region !== region) return false;
       if (q && !(w.name.toLowerCase().includes(q) || (REGION_MAP[w.region].en + REGION_MAP[w.region].ko).toLowerCase().includes(q)))
         return false;
       return true;
     });
-  }, [region, q]);
+  }, [region, q, whiskeys]);
 
   const flat = q || sort !== "region";
   const flatList = useMemo(() => {
@@ -894,10 +894,8 @@ function App() {
 
   // Use Supabase data if available, otherwise fall back to hardcoded WHISKEYS
   const dbWhiskeys = useSupabaseWhiskeys();
-  if (dbWhiskeys) {
-    // Dynamically replace the WHISKEYS array when DB data is available
-    window.BACKROOM.WHISKEYS = dbWhiskeys;
-  }
+  // If Supabase returns data (even empty array), use it. Otherwise fallback to hardcoded.
+  const whiskeys = dbWhiskeys !== null ? dbWhiskeys : WHISKEYS;
 
   useEffect(() => {
     localStorage.setItem(LS, JSON.stringify({ entered }));
@@ -909,7 +907,7 @@ function App() {
   return (
     <div className="screen" data-theme={THEME}>
       <Cover visible={!entered} onEnter={enter} />
-      <Menu show={entered} onBack={back} />
+      <Menu show={entered} onBack={back} whiskeys={whiskeys} />
     </div>
   );
 }

@@ -66,7 +66,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
     return searchWhiskeys(searchQuery, REFERENCE_WHISKEYS).slice(0, 8);
   }, [searchQuery]);
 
-  const selectWhiskey = (w: ReferenceWhiskey) => {
+  const selectWhiskey = async (w: ReferenceWhiskey) => {
     setBrand(w.brand);
     setExpression(w.expression);
     setRegion(w.region);
@@ -76,6 +76,24 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
     setSearchQuery('');
     setShowResults(false);
     setStep('cost');
+
+    // Auto-search price after selection
+    setPriceSearching(true);
+    try {
+      const priceResult = await searchPrice(pin, w.brand, w.expression || '');
+      if (priceResult.prices?.length > 0) {
+        setPriceResults(priceResult.prices);
+        // Auto-fill with lowest price
+        const lowestPrice = priceResult.prices[0];
+        setCostPrice(lowestPrice.price);
+        if (lowestPrice.volume_ml) {
+          setBottleVolume(lowestPrice.volume_ml);
+        }
+      }
+    } catch (priceErr) {
+      console.warn('Auto price search failed:', priceErr);
+    }
+    setPriceSearching(false);
   };
 
   const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,6 +119,26 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
       setAge(result.age);
       setNotes(result.notes || '');
       setStep('cost');
+
+      // Auto-search price after identification
+      if (result.brand) {
+        setPriceSearching(true);
+        try {
+          const priceResult = await searchPrice(pin, result.brand, result.expression || '');
+          if (priceResult.prices?.length > 0) {
+            setPriceResults(priceResult.prices);
+            // Auto-fill with lowest price
+            const lowestPrice = priceResult.prices[0];
+            setCostPrice(lowestPrice.price);
+            if (lowestPrice.volume_ml) {
+              setBottleVolume(lowestPrice.volume_ml);
+            }
+          }
+        } catch (priceErr) {
+          console.warn('Auto price search failed:', priceErr);
+        }
+        setPriceSearching(false);
+      }
     } catch (err) {
       alert('인식 실패: ' + (err as Error).message + '\n수동으로 입력해주세요.');
     }
