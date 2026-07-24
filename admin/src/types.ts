@@ -37,6 +37,7 @@ export interface Settings {
   markup_multiplier: number;
   margin_pct: number;
   rounding_unit: number;
+  inventory_snapshot_day: number | null;
   updated_at: string;
 }
 
@@ -72,6 +73,94 @@ export interface ReferenceWhiskey {
   abv: number;
   age: number | null;
   notes: string;
+}
+
+export interface InventoryLog {
+  id: number;
+  whiskey_id: number;
+  stock_percent: number;
+  scanned_at: string;
+  confidence: number | null;
+  source: string;
+  corrected_at?: string | null;
+  corrected_from_percent?: number | null;
+  correction_source?: string | null;
+}
+
+export interface ScanResult {
+  whiskey_id: number;
+  stock_percent: number;
+  confidence: number | null;
+}
+
+export interface InventoryDailyTrendPoint {
+  whiskey_id: number;
+  day: string;
+  log_id: number;
+  stock_percent: number;
+  scanned_at: string;
+  corrected_at: string | null;
+  source: string;
+  confidence: number | null;
+}
+
+export interface InventoryMonthlySnapshot {
+  id: number;
+  whiskey_id: number;
+  snapshot_month: string;
+  snapshot_date: string;
+  stock_percent: number;
+  source_log_id: number | null;
+  captured_at: string;
+  source: string;
+}
+
+export interface InventoryCorrectionRequest {
+  whiskey_id: number;
+  log_id: number;
+  stock_percent: number;
+}
+
+export interface InventoryCorrectionResult {
+  success: boolean;
+  whiskey_id: number;
+  log_id: number;
+  stock_percent: number;
+  current_stock_percent: number | null;
+  log?: InventoryLog;
+}
+
+export interface CaptureInventorySnapshotsResult {
+  success: boolean;
+  inserted?: number;
+  skipped?: number;
+  captured?: number;
+}
+
+export interface BulkUploadRow {
+  rowIndex: number;
+  brand: string;
+  expression: string;
+  cost_price: number;
+  region: string;
+  abv: number;
+  age: number | null;
+  notes: string;
+  glass_price: number;
+  bottle_price: number;
+  bottle_volume_ml: number;
+  status: 'pending' | 'enriched' | 'duplicate' | 'error';
+  error?: string;
+  enrichSource?: 'reference' | 'web' | 'ai_notes_only' | 'default';
+  factDefaulted?: boolean;
+}
+
+export interface EnrichmentResult {
+  region: string | null;
+  abv: number | null;
+  age: number | null;
+  notes: string;
+  source: 'reference' | 'web' | 'ai_notes_only';
 }
 
 export const REGIONS = [

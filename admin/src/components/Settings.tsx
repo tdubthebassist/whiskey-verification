@@ -1,18 +1,47 @@
-import { useState } from 'react';
-import { updateSettings } from '../lib/api';
+import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { captureInventorySnapshots, getSettings, updateSettings } from '../lib/api';
 
 interface SettingsProps {
   pin: string;
   onBack: () => void;
 }
 
+const ERROR_MESSAGE_MARKERS = ['실패', '일치', '4자리', '입력', '사이', '로딩'];
+
 export default function Settings({ pin, onBack }: SettingsProps) {
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [snapshotDay, setSnapshotDay] = useState<number | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [savingPin, setSavingPin] = useState(false);
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [message, setMessage] = useState('');
 
-  const handleSave = async () => {
+  useEffect(() => {
+    getSettings()
+      .then((settings) => {
+        setSnapshotDay(settings.inventory_snapshot_day);
+      })
+      .catch((err) => {
+        setMessage('설정 로딩 실패: ' + (err as Error).message);
+      })
+      .finally(() => setSettingsLoading(false));
+  }, []);
+
+  const validateSnapshotDay = () => {
+    if (snapshotDay === null) {
+      return true;
+    }
+    if (!Number.isInteger(snapshotDay) || snapshotDay < 1 || snapshotDay > 28) {
+      setMessage('스냅샷 날짜는 1일부터 28일 사이여야 합니다.');
+      return false;
+    }
+    return true;
+  };
+
+  const handlePinSave = async () => {
     if (!newPin) {
       setMessage('변경할 PIN을 입력해주세요.');
       return;
@@ -26,7 +55,7 @@ export default function Settings({ pin, onBack }: SettingsProps) {
       return;
     }
 
-    setSaving(true);
+    setSavingPin(true);
     setMessage('');
     try {
       await updateSettings(pin, {}, newPin);
@@ -35,9 +64,43 @@ export default function Settings({ pin, onBack }: SettingsProps) {
       setConfirmPin('');
     } catch (err) {
       setMessage('저장 실패: ' + (err as Error).message);
+    } finally {
+      setSavingPin(false);
     }
-    setSaving(false);
   };
+
+  const handleSnapshotSave = async () => {
+    if (!validateSnapshotDay()) return;
+
+    setSavingSnapshot(true);
+    setMessage('');
+    try {
+      await updateSettings(pin, { inventory_snapshot_day: snapshotDay });
+      setMessage(snapshotDay === null
+        ? '월간 재고 스냅샷이 서울 시간 월말 기준으로 저장되었습니다.'
+        : '월간 재고 스냅샷 날짜가 저장되었습니다.');
+    } catch (err) {
+      setMessage('저장 실패: ' + (err as Error).message);
+    } finally {
+      setSavingSnapshot(false);
+    }
+  };
+
+  const handleCaptureNow = async () => {
+    setCapturing(true);
+    setMessage('');
+    try {
+      const result = await captureInventorySnapshots(pin);
+      const count = result.inserted ?? result.captured ?? 0;
+      setMessage(`재고 스냅샷을 생성했습니다. 신규 ${count}건, 건너뜀 ${result.skipped ?? 0}건.`);
+    } catch (err) {
+      setMessage('스냅샷 실패: ' + (err as Error).message);
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const isErrorMessage = ERROR_MESSAGE_MARKERS.some((marker) => message.includes(marker));
 
   return (
     <div style={styles.container}>
@@ -47,7 +110,7 @@ export default function Settings({ pin, onBack }: SettingsProps) {
       </header>
 
       <div style={styles.body}>
-        <div style={styles.card}>
+        <section style={styles.card}>
           <h3 style={styles.sectionTitle}>PIN 변경</h3>
 
           <div style={styles.field}>
@@ -73,28 +136,72 @@ export default function Settings({ pin, onBack }: SettingsProps) {
               placeholder="다시 입력"
             />
           </div>
-        </div>
+
+          <button style={styles.inlineBtn} onClick={handlePinSave} disabled={savingPin}>
+            {savingPin ? '저장 중...' : 'PIN 저장'}
+          </button>
+        </section>
+
+        <section style={styles.card}>
+          <h3 style={styles.sectionTitle}>월간 재고 스냅샷</h3>
+
+          <div style={styles.field}>
+            <label style={styles.label}>매월 기록 날짜</label>
+            <label style={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={snapshotDay === null}
+                disabled={settingsLoading}
+                onChange={(e) => setSnapshotDay(e.target.checked ? null : 1)}
+              />
+              <span>Asia/Seoul 월말 기본값 사용</span>
+            </label>
+            <input
+              style={styles.input}
+              type="number"
+              min="1"
+              max="28"
+              value={snapshotDay ?? ''}
+              disabled={settingsLoading || snapshotDay === null}
+              onChange={(e) => setSnapshotDay(e.target.value === '' ? 1 : Number(e.target.value))}
+            />
+            <span style={styles.hint}>
+              월말 기본값은 Asia/Seoul 기준 해당 월의 마지막 날에 실행됩니다. 날짜를 직접 고르면 1-28일만 사용합니다.
+            </span>
+          </div>
+
+          <div style={styles.actions}>
+            <button
+              style={styles.inlineBtn}
+              onClick={handleSnapshotSave}
+              disabled={settingsLoading || savingSnapshot}
+            >
+              {savingSnapshot ? '저장 중...' : '스냅샷 날짜 저장'}
+            </button>
+            <button
+              style={styles.secondaryBtn}
+              onClick={handleCaptureNow}
+              disabled={capturing}
+            >
+              {capturing ? '생성 중...' : '지금 스냅샷 생성'}
+            </button>
+          </div>
+        </section>
 
         {message && (
           <p style={{
             ...styles.message,
-            color: message.includes('실패') || message.includes('일치') || message.includes('4자리') || message.includes('입력')
-              ? '#c2603a'
-              : '#6fae8e',
+            color: isErrorMessage ? '#c2603a' : '#6fae8e',
           }}>
             {message}
           </p>
         )}
-
-        <button style={styles.saveBtn} onClick={handleSave} disabled={saving}>
-          {saving ? '저장 중...' : 'PIN 저장'}
-        </button>
       </div>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   container: {
     position: 'fixed', inset: 0, background: '#17130f',
     display: 'flex', flexDirection: 'column', color: '#ece0cd',
@@ -117,8 +224,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20,
   },
   card: {
-    width: '100%', maxWidth: 500, background: '#1d1712',
-    border: '1px solid rgba(221,201,166,0.13)', borderRadius: 12, padding: 24,
+    width: '100%', maxWidth: 560, background: '#1d1712',
+    border: '1px solid rgba(221,201,166,0.13)', borderRadius: 8, padding: 24,
+    boxSizing: 'border-box' as const,
   },
   sectionTitle: {
     fontFamily: '"Cormorant Garamond", serif', fontSize: 16, fontWeight: 600,
@@ -134,11 +242,21 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8, padding: '10px 14px', color: '#ece0cd', fontSize: 15,
     fontFamily: '"Nanum Myeongjo", serif', outline: 'none', boxSizing: 'border-box' as const,
   },
+  checkboxRow: {
+    display: 'flex', alignItems: 'center', gap: 8, color: '#ece0cd',
+    fontSize: 14, marginBottom: 4,
+  },
   hint: { color: '#837763', fontSize: 11 },
-  message: { fontSize: 14, textAlign: 'center' },
-  saveBtn: {
-    width: '100%', maxWidth: 500, padding: '14px 24px', background: '#cd924a',
-    color: '#1a130c', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 700,
+  actions: { display: 'flex', gap: 10, flexWrap: 'wrap' },
+  inlineBtn: {
+    padding: '12px 18px', background: '#cd924a',
+    color: '#1a130c', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700,
     fontFamily: '"Cormorant Garamond", serif', cursor: 'pointer',
   },
+  secondaryBtn: {
+    padding: '12px 18px', background: 'transparent',
+    color: '#b8aa90', border: '1px solid rgba(221,201,166,0.18)', borderRadius: 8,
+    fontSize: 15, fontFamily: '"Cormorant Garamond", serif', cursor: 'pointer',
+  },
+  message: { fontSize: 14, textAlign: 'center', maxWidth: 560 },
 };

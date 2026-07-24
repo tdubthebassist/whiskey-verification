@@ -1,13 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
-import { scanInventory } from '../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, CSSProperties, ReactNode } from 'react';
+import { correctInventoryLog, getInventoryDailyTrend, scanInventory } from '../lib/api';
 import { readImageAsDataUrl } from '../lib/image';
-import type { Whiskey } from '../types';
+import { supabase } from '../lib/supabase';
+import type { InventoryDailyTrendPoint, Whiskey } from '../types';
 
 interface InventoryPageProps {
   pin: string;
   onBack: () => void;
 }
+
+const CHART_WIDTH = 520;
+const CHART_HEIGHT = 160;
+const CHART_PAD_X = 18;
+const CHART_PAD_Y = 14;
+const CHART_PLOT_WIDTH = CHART_WIDTH - CHART_PAD_X * 2;
+const CHART_PLOT_HEIGHT = CHART_HEIGHT - CHART_PAD_Y * 2;
 
 function stockColor(pct: number | null): string {
   if (pct === null) return '#837763';
@@ -16,9 +24,69 @@ function stockColor(pct: number | null): string {
   return '#4a8c5c';
 }
 
+function formatServerDay(day: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return `${day.slice(5, 7)}/${day.slice(8, 10)}`;
+  }
+
+  return day;
+}
+
+function formatTimestampDate(value: string): string {
+  return new Date(value).toLocaleDateString('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatTrendPointDate(point: InventoryDailyTrendPoint): string {
+  return point.day ? formatServerDay(point.day) : formatTimestampDate(point.scanned_at);
+}
+
+function chartPointPosition(
+  point: InventoryDailyTrendPoint,
+  index: number,
+  totalPoints: number,
+): { x: number; y: number } {
+  const denom = Math.max(totalPoints - 1, 1);
+
+  return {
+    x: CHART_PAD_X + (index / denom) * CHART_PLOT_WIDTH,
+    y: CHART_PAD_Y + (1 - point.stock_percent / 100) * CHART_PLOT_HEIGHT,
+  };
+}
+
+function buildPath(points: InventoryDailyTrendPoint[]): string {
+  if (points.length === 0) return '';
+
+  return points
+    .map((point, index) => {
+      const { x, y } = chartPointPosition(point, index, points.length);
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
 export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
   const [whiskeys, setWhiskeys] = useState<Whiskey[]>([]);
   const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [trend, setTrend] = useState<InventoryDailyTrendPoint[]>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState<string | null>(null);
+  const [editingLogId, setEditingLogId] = useState<number | null>(null);
+  const [correctionValue, setCorrectionValue] = useState('');
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [savingCorrection, setSavingCorrection] = useState(false);
   const [scanning, setScanning] = useState<number | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
@@ -26,8 +94,13 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase.from('whiskeys').select('*').order('id');
-      if (data) setWhiskeys(data);
+      if (!data) return;
+
+      const rows = data as Whiskey[];
+      setWhiskeys(rows);
+      setSelectedId((current) => current ?? rows[0]?.id ?? null);
     };
+
     load();
 
     const channel = supabase
@@ -38,22 +111,57 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const filtered = query.trim()
-    ? whiskeys.filter((w) => {
-        const q = query.toLowerCase();
-        return w.brand.toLowerCase().includes(q) || w.expression.toLowerCase().includes(q);
-      })
-    : whiskeys;
+  const selectedWhiskey = useMemo(
+    () => whiskeys.find((w) => w.id === selectedId) ?? null,
+    [selectedId, whiskeys],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return whiskeys;
+
+    return whiskeys.filter((w) =>
+      w.brand.toLowerCase().includes(q) || w.expression.toLowerCase().includes(q),
+    );
+  }, [query, whiskeys]);
+
+  const loadTrend = async (whiskeyId: number) => {
+    setTrendLoading(true);
+    setTrendError(null);
+    try {
+      const rows = await getInventoryDailyTrend(whiskeyId);
+      setTrend(rows);
+    } catch (err) {
+      setTrend([]);
+      setTrendError((err as Error).message);
+    } finally {
+      setTrendLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedId === null) return;
+    void Promise.resolve().then(() => loadTrend(selectedId));
+  }, [selectedId]);
+
+  const selectWhiskey = (id: number) => {
+    setEditingLogId(null);
+    setCorrectionValue('');
+    setCorrectionError(null);
+    setSelectedId(id);
+  };
 
   const handleCameraClick = (id: number) => {
+    selectWhiskey(id);
     setScanError(null);
     fileInputRefs.current[id]?.click();
   };
 
-  const handleFileChange = async (w: Whiskey, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (w: Whiskey, e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    selectWhiskey(w.id);
     setScanning(w.id);
     setScanError(null);
 
@@ -67,16 +175,96 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
             : item,
         ),
       );
+      await loadTrend(w.id);
     } catch (err) {
       setScanError((err as Error).message);
     } finally {
       setScanning(null);
-      // reset input so same file can be re-selected
       if (fileInputRefs.current[w.id]) {
         fileInputRefs.current[w.id]!.value = '';
       }
     }
   };
+
+  const startCorrection = (point: InventoryDailyTrendPoint) => {
+    setEditingLogId(point.log_id);
+    setCorrectionValue(String(point.stock_percent));
+    setCorrectionError(null);
+  };
+
+  const saveCorrection = async () => {
+    if (!selectedWhiskey || editingLogId === null) return;
+
+    const nextPercent = Number(correctionValue);
+    if (!Number.isInteger(nextPercent) || nextPercent < 0 || nextPercent > 100) {
+      setCorrectionError('재고율은 0부터 100 사이의 정수여야 합니다.');
+      return;
+    }
+
+    setSavingCorrection(true);
+    setCorrectionError(null);
+    try {
+      const result = await correctInventoryLog(pin, {
+        whiskey_id: selectedWhiskey.id,
+        log_id: editingLogId,
+        stock_percent: nextPercent,
+      });
+
+      setWhiskeys((prev) =>
+        prev.map((item) =>
+          item.id === selectedWhiskey.id
+            ? { ...item, stock_percent: result.current_stock_percent }
+            : item,
+        ),
+      );
+      setEditingLogId(null);
+      setCorrectionValue('');
+      await loadTrend(selectedWhiskey.id);
+    } catch (err) {
+      setCorrectionError((err as Error).message);
+    } finally {
+      setSavingCorrection(false);
+    }
+  };
+
+  const chartPath = buildPath(trend);
+  const latestPoint = trend[trend.length - 1] ?? null;
+  let chartContent: ReactNode;
+
+  if (trendLoading) {
+    chartContent = <p style={styles.empty}>기록을 불러오는 중...</p>;
+  } else if (trendError) {
+    chartContent = <p style={styles.errorText}>기록 오류: {trendError}</p>;
+  } else if (trend.length === 0) {
+    chartContent = <p style={styles.empty}>아직 재고 기록이 없습니다.</p>;
+  } else {
+    chartContent = (
+      <>
+        <svg viewBox="0 0 520 160" style={styles.chart} role="img" aria-label="재고 이력 차트">
+          <line x1="18" y1="14" x2="18" y2="146" stroke="rgba(221,201,166,0.18)" />
+          <line x1="18" y1="146" x2="502" y2="146" stroke="rgba(221,201,166,0.18)" />
+          <line x1="18" y1="80" x2="502" y2="80" stroke="rgba(221,201,166,0.08)" />
+          <path d={chartPath} fill="none" stroke="#cd924a" strokeWidth="3" />
+          {trend.map((point, index) => {
+            const { x, y } = chartPointPosition(point, index, trend.length);
+            return (
+              <circle
+                key={point.log_id}
+                cx={x}
+                cy={y}
+                r="4"
+                fill={stockColor(point.stock_percent)}
+              />
+            );
+          })}
+        </svg>
+        <div style={styles.chartLabels}>
+          <span>{formatTrendPointDate(trend[0])}</span>
+          <span>{formatTrendPointDate(trend[trend.length - 1])}</span>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -109,83 +297,172 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
         </div>
       )}
 
-      <div style={styles.list}>
-        <div style={styles.listHeader}>
-          <span style={{ ...styles.col, flex: 2 }}>위스키</span>
-          <span style={{ ...styles.col, flex: 1.5 }}>재고 수준</span>
-          <span style={{ ...styles.col, flex: 0.5, textAlign: 'center' }}>스캔</span>
-        </div>
+      <main style={styles.content}>
+        <section style={styles.list}>
+          <div style={styles.listHeader}>
+            <span style={{ ...styles.col, flex: 2 }}>위스키</span>
+            <span style={{ ...styles.col, flex: 1.5 }}>재고 수준</span>
+            <span style={{ ...styles.col, flex: 0.5, textAlign: 'center' }}>스캔</span>
+          </div>
 
-        {filtered.map((w) => {
-          const pct = w.stock_percent;
-          const color = stockColor(pct);
-          const isScanning = scanning === w.id;
+          {filtered.map((w) => {
+            const pct = w.stock_percent;
+            const color = stockColor(pct);
+            const isScanning = scanning === w.id;
+            const isSelected = selectedId === w.id;
 
-          return (
-            <div key={w.id} style={styles.row}>
-              <div style={{ ...styles.col, flex: 2 }}>
-                <span style={styles.brand}>{w.brand}</span>
-                {w.expression && <span style={styles.expr}> {w.expression}</span>}
-                <div style={styles.meta}>
-                  {w.age ? `${w.age}년` : 'NAS'} · {w.abv}% · {w.region}
+            return (
+              <div
+                key={w.id}
+                style={{ ...styles.row, ...(isSelected ? styles.selectedRow : {}) }}
+                onClick={() => selectWhiskey(w.id)}
+              >
+                <div style={{ ...styles.col, flex: 2 }}>
+                  <span style={styles.brand}>{w.brand}</span>
+                  {w.expression && <span style={styles.expr}> {w.expression}</span>}
+                  <div style={styles.meta}>
+                    {w.age ? `${w.age}년` : 'NAS'} · {w.abv}% · {w.region}
+                  </div>
+                </div>
+
+                <div style={{ ...styles.col, flex: 1.5 }}>
+                  {pct === null ? (
+                    <span style={styles.unmeasured}>미측정</span>
+                  ) : (
+                    <div>
+                      <div style={styles.barTrack}>
+                        <div
+                          style={{
+                            ...styles.barFill,
+                            width: `${pct}%`,
+                            background: color,
+                          }}
+                        />
+                      </div>
+                      <span style={{ ...styles.pctLabel, color }}>{pct}%</span>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ ...styles.col, flex: 0.5, display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    style={{
+                      ...styles.cameraBtn,
+                      opacity: isScanning ? 0.5 : 1,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCameraClick(w.id);
+                    }}
+                    disabled={isScanning}
+                    title="사진으로 재고 스캔"
+                  >
+                    {isScanning ? '...' : '📷'}
+                  </button>
+                  <input
+                    ref={(el) => { fileInputRefs.current[w.id] = el; }}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handleFileChange(w, e)}
+                  />
                 </div>
               </div>
+            );
+          })}
 
-              <div style={{ ...styles.col, flex: 1.5 }}>
-                {pct === null ? (
-                  <span style={styles.unmeasured}>미측정</span>
-                ) : (
-                  <div>
-                    <div style={styles.barTrack}>
-                      <div
-                        style={{
-                          ...styles.barFill,
-                          width: `${pct}%`,
-                          background: color,
-                        }}
-                      />
-                    </div>
-                    <span style={{ ...styles.pctLabel, color }}>{pct}%</span>
-                  </div>
+          {filtered.length === 0 && (
+            <p style={styles.empty}>
+              {query ? '검색 결과가 없습니다.' : '위스키가 없습니다.'}
+            </p>
+          )}
+        </section>
+
+        <aside style={styles.detail}>
+          {!selectedWhiskey ? (
+            <p style={styles.empty}>기록을 볼 위스키를 선택하세요.</p>
+          ) : (
+            <>
+              <div style={styles.detailHeader}>
+                <div>
+                  <h2 style={styles.detailTitle}>
+                    {selectedWhiskey.brand} {selectedWhiskey.expression}
+                  </h2>
+                  <p style={styles.detailMeta}>
+                    현재 재고: {selectedWhiskey.stock_percent ?? '미측정'}
+                    {selectedWhiskey.stock_percent !== null ? '%' : ''}
+                  </p>
+                </div>
+                {latestPoint && (
+                  <span style={{ ...styles.latestBadge, color: stockColor(latestPoint.stock_percent) }}>
+                    {latestPoint.stock_percent}%
+                  </span>
                 )}
               </div>
 
-              <div style={{ ...styles.col, flex: 0.5, display: 'flex', justifyContent: 'center' }}>
-                <button
-                  style={{
-                    ...styles.cameraBtn,
-                    opacity: isScanning ? 0.5 : 1,
-                  }}
-                  onClick={() => handleCameraClick(w.id)}
-                  disabled={isScanning}
-                  title="사진으로 재고 스캔"
-                >
-                  {isScanning ? '...' : '📷'}
-                </button>
-                <input
-                  ref={(el) => { fileInputRefs.current[w.id] = el; }}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  capture="environment"
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleFileChange(w, e)}
-                />
+              <div style={styles.chartCard}>
+                {chartContent}
               </div>
-            </div>
-          );
-        })}
 
-        {filtered.length === 0 && (
-          <p style={styles.empty}>
-            {query ? '검색 결과가 없습니다.' : '위스키가 없습니다.'}
-          </p>
-        )}
-      </div>
+              {correctionError && (
+                <p style={styles.errorText}>{correctionError}</p>
+              )}
+
+              <div style={styles.historyList}>
+                {trend.map((point) => (
+                  <div key={point.log_id} style={styles.historyRow}>
+                    <div>
+                      <strong style={{ color: stockColor(point.stock_percent) }}>
+                        {point.stock_percent}%
+                      </strong>
+                      <span style={styles.historyMeta}>
+                        {formatDateTime(point.scanned_at)} · {point.source}
+                        {point.corrected_at ? ' · 수정됨' : ''}
+                      </span>
+                    </div>
+
+                    {editingLogId === point.log_id ? (
+                      <div style={styles.correctionControls}>
+                        <input
+                          style={styles.percentInput}
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={correctionValue}
+                          onChange={(e) => setCorrectionValue(e.target.value)}
+                        />
+                        <button style={styles.smallBtn} onClick={saveCorrection} disabled={savingCorrection}>
+                          저장
+                        </button>
+                        <button
+                          style={styles.ghostBtn}
+                          onClick={() => {
+                            setEditingLogId(null);
+                            setCorrectionValue('');
+                            setCorrectionError(null);
+                          }}
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <button style={styles.ghostBtn} onClick={() => startCorrection(point)}>
+                        수정
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </aside>
+      </main>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   container: {
     position: 'fixed', inset: 0, background: '#17130f',
     display: 'flex', flexDirection: 'column', color: '#ece0cd',
@@ -226,7 +503,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
   },
   errorClose: { cursor: 'pointer', fontSize: 18, color: '#c2603a' },
-  list: { flex: 1, overflow: 'auto', padding: '0 32px 32px' },
+  content: {
+    flex: 1, display: 'grid', gridTemplateColumns: 'minmax(420px, 1fr) minmax(360px, 520px)',
+    gap: 24, overflow: 'hidden', padding: '0 32px 32px',
+  },
+  list: { overflow: 'auto' },
   listHeader: {
     display: 'flex', gap: 16, padding: '12px 8px',
     borderBottom: '1px solid rgba(221,201,166,0.26)',
@@ -235,7 +516,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   row: {
     display: 'flex', gap: 16, padding: '14px 8px', alignItems: 'center',
-    borderBottom: '1px solid rgba(221,201,166,0.08)',
+    borderBottom: '1px solid rgba(221,201,166,0.08)', cursor: 'pointer',
+  },
+  selectedRow: {
+    background: 'rgba(205,146,74,0.08)',
+    boxShadow: 'inset 3px 0 0 #cd924a',
   },
   col: { flex: 1, fontSize: 14 },
   brand: { fontFamily: '"Cormorant Garamond", serif', fontSize: 18, fontWeight: 600 },
@@ -255,5 +540,50 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8, padding: '6px 10px', fontSize: 18,
     cursor: 'pointer', lineHeight: 1,
   },
-  empty: { textAlign: 'center', color: '#837763', padding: 40 },
+  empty: { textAlign: 'center', color: '#837763', padding: 24, margin: 0 },
+  detail: {
+    overflow: 'auto', background: '#1d1712', border: '1px solid rgba(221,201,166,0.13)',
+    borderRadius: 8, padding: 20,
+  },
+  detailHeader: {
+    display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start',
+    marginBottom: 18,
+  },
+  detailTitle: {
+    fontFamily: '"Cormorant Garamond", serif', fontSize: 20, margin: '0 0 6px',
+    color: '#ece0cd',
+  },
+  detailMeta: { color: '#837763', margin: 0, fontSize: 13 },
+  latestBadge: {
+    fontFamily: '"Cormorant Garamond", serif', fontSize: 28, fontWeight: 700,
+  },
+  chartCard: {
+    background: '#17130f', border: '1px solid rgba(221,201,166,0.1)',
+    borderRadius: 8, padding: 12, marginBottom: 16,
+  },
+  chart: { width: '100%', height: 180, display: 'block' },
+  chartLabels: {
+    display: 'flex', justifyContent: 'space-between', color: '#837763',
+    fontSize: 11, padding: '0 4px',
+  },
+  errorText: { color: '#c2603a', fontSize: 13, margin: '8px 0' },
+  historyList: { display: 'flex', flexDirection: 'column', gap: 8 },
+  historyRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+    padding: '10px 0', borderBottom: '1px solid rgba(221,201,166,0.08)',
+  },
+  historyMeta: { display: 'block', color: '#837763', fontSize: 12, marginTop: 3 },
+  correctionControls: { display: 'flex', alignItems: 'center', gap: 6 },
+  percentInput: {
+    width: 64, background: '#241c15', border: '1px solid rgba(221,201,166,0.18)',
+    color: '#ece0cd', borderRadius: 6, padding: '7px 8px',
+  },
+  smallBtn: {
+    background: '#cd924a', color: '#1a130c', border: 'none', borderRadius: 6,
+    padding: '8px 10px', cursor: 'pointer',
+  },
+  ghostBtn: {
+    background: 'transparent', color: '#b8aa90', border: '1px solid rgba(221,201,166,0.16)',
+    borderRadius: 6, padding: '7px 10px', cursor: 'pointer',
+  },
 };

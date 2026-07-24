@@ -9,6 +9,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MUTABLE_SETTING_KEYS = new Set([
+  'pour_size_ml',
+  'markup_multiplier',
+  'margin_pct',
+  'rounding_unit',
+  'inventory_snapshot_day',
+]);
+
+class ValidationError extends Error {}
+
 async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(pin);
@@ -16,6 +26,43 @@ async function hashPin(pin: string): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function buildSettingsPayload(updates: unknown): Record<string, unknown> {
+  if (updates === undefined || updates === null) {
+    return {};
+  }
+
+  if (typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new ValidationError('Invalid settings payload');
+  }
+
+  const payload: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (!MUTABLE_SETTING_KEYS.has(key)) {
+      throw new ValidationError(`Setting is not mutable: ${key}`);
+    }
+
+    if (key === 'inventory_snapshot_day') {
+      if (
+        value !== null
+        && (!Number.isInteger(value) || value < 1 || value > 28)
+      ) {
+        throw new ValidationError('inventory_snapshot_day must be null or an integer from 1 to 28');
+      }
+      payload[key] = value;
+      continue;
+    }
+
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new ValidationError(`${key} must be a finite number`);
+    }
+
+    payload[key] = value;
+  }
+
+  return payload;
 }
 
 serve(async (req) => {
@@ -42,7 +89,7 @@ serve(async (req) => {
     }
 
     const payload: Record<string, unknown> = {
-      ...updates,
+      ...buildSettingsPayload(updates),
       updated_at: new Date().toISOString(),
     };
 
@@ -50,10 +97,6 @@ serve(async (req) => {
     if (newPin) {
       payload.pin_hash = await hashPin(newPin);
     }
-
-    // Remove fields that shouldn't be updated directly
-    delete payload.id;
-    delete payload.pin_hash_raw;
 
     const { error } = await supabase
       .from('settings')
@@ -69,7 +112,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ error: (error as Error).message }),
       {
-        status: 500,
+        status: error instanceof ValidationError ? 400 : 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
     );

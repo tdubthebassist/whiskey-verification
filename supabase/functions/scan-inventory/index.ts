@@ -3,24 +3,32 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
   type ImageInput,
   parseImageInput,
-  parseJsonObject,
   requestAnthropicText,
   requestOpenAIText,
   withProviderFallback,
 } from '../_shared/ai.ts';
+import {
+  type InventoryScanResult,
+  parseInventoryScanResult,
+} from '../_shared/inventory_scan.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-const PROMPT = `Analyze this whiskey bottle image and estimate how full the bottle is. Return ONLY valid JSON (no markdown):
+const PROMPT = `Analyze this image for whiskey inventory. Return ONLY valid JSON (no markdown):
 {
+  "is_whiskey_bottle": boolean,
   "stock_percent": number between 0 and 100 (0 = empty, 100 = full/sealed),
-  "confidence": number between 0 and 1
+  "confidence": number between 0 and 1,
+  "rejection_reason": string or null
 }
 
 Guidelines:
+- Set is_whiskey_bottle to true when the image visually shows a whiskey bottle, even if label text is unreadable.
+- Set is_whiskey_bottle to false for non-whiskey images, non-bottle objects, people, menus, receipts, or unrelated scenes.
+- If is_whiskey_bottle is false, set stock_percent to null and explain briefly in rejection_reason.
 - 100: bottle is sealed or completely full
 - 75: bottle is about three-quarters full
 - 50: bottle is half full
@@ -43,36 +51,14 @@ async function hashPin(pin: string): Promise<string> {
     .join('');
 }
 
-interface ScanResult {
-  stockPercent: number;
-  confidence: number | null;
-}
-
-function parseScanResult(text: string): ScanResult {
-  const parsed = parseJsonObject(text, 'Inventory scan');
-  const stockPercent = Number(parsed.stock_percent);
-  const confidence = Number(parsed.confidence);
-
-  if (!Number.isFinite(stockPercent)) {
-    throw new Error('Inventory scan returned an invalid stock percentage');
-  }
-
-  return {
-    stockPercent: Math.min(100, Math.max(0, Math.round(stockPercent))),
-    confidence: Number.isFinite(confidence)
-      ? Math.min(1, Math.max(0, confidence))
-      : null,
-  };
-}
-
-async function scanWithClaude(image: ImageInput): Promise<ScanResult> {
-  return parseScanResult(
+async function scanWithClaude(image: ImageInput): Promise<InventoryScanResult> {
+  return parseInventoryScanResult(
     await requestAnthropicText(ANTHROPIC_API_KEY, PROMPT, 512, image),
   );
 }
 
-async function scanWithOpenAI(image: ImageInput): Promise<ScanResult> {
-  return parseScanResult(
+async function scanWithOpenAI(image: ImageInput): Promise<InventoryScanResult> {
+  return parseInventoryScanResult(
     await requestOpenAIText(OPENAI_API_KEY, PROMPT, 512, image),
   );
 }
@@ -137,7 +123,7 @@ serve(async (req) => {
       });
     }
 
-    const { stockPercent: stock_percent, confidence } = await withProviderFallback({
+    const scanResult = await withProviderFallback({
       operation: 'Inventory scan',
       anthropicApiKey: ANTHROPIC_API_KEY,
       openAIApiKey: OPENAI_API_KEY,
@@ -145,11 +131,27 @@ serve(async (req) => {
       openAI: () => scanWithOpenAI(image),
     });
 
+    if (!scanResult.isWhiskeyBottle) {
+      return new Response(JSON.stringify({
+        error: 'Image does not appear to show a whiskey bottle. Please try another photo.',
+        code: 'not_whiskey_bottle',
+        rejection_reason: scanResult.rejectionReason,
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const stock_percent = scanResult.stockPercent;
+    if (stock_percent === null) {
+      throw new Error('Inventory scan returned no stock percentage');
+    }
+
     // Atomic dual-write via RPC
     const { error: rpcError } = await supabase.rpc('record_inventory_scan', {
       p_whiskey_id: whiskey_id,
       p_stock_percent: stock_percent,
-      p_confidence: confidence,
+      p_confidence: scanResult.confidence,
       p_source: 'vision_ai',
     });
 
@@ -158,7 +160,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ whiskey_id, stock_percent, confidence }),
+      JSON.stringify({ whiskey_id, stock_percent, confidence: scanResult.confidence }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
