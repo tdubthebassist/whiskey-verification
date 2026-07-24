@@ -13,6 +13,7 @@ export interface Whiskey {
   bottle_volume_ml: number;
   created_at: string;
   updated_at: string;
+  stock_percent: number | null;
 }
 
 export interface WhiskeyInput {

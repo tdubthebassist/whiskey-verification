@@ -4,9 +4,10 @@ import Dashboard from './components/Dashboard';
 import AddBottle from './components/AddBottle';
 import Settings from './components/Settings';
 import PricingSettings from './components/PricingSettings';
+import InventoryPage from './components/InventoryPage';
 import type { Whiskey } from './types';
 
-type View = 'pin' | 'dashboard' | 'add' | 'edit' | 'settings' | 'pricing';
+type View = 'pin' | 'dashboard' | 'add' | 'edit' | 'settings' | 'pricing' | 'inventory';
 
 function App() {
   const [view, setView] = useState<View>('pin');
@@ -35,6 +36,7 @@ function App() {
           onEdit={(w) => { setEditingWhiskey(w); setView('edit'); }}
           onSettings={() => setView('settings')}
           onPricing={() => setView('pricing')}
+          onInventory={() => setView('inventory')}
           onLogout={handleLogout}
         />
       );
@@ -69,6 +71,14 @@ function App() {
     case 'pricing':
       return (
         <PricingSettings
+          pin={pin}
+          onBack={() => setView('dashboard')}
+        />
+      );
+
+    case 'inventory':
+      return (
+        <InventoryPage
           pin={pin}
           onBack={() => setView('dashboard')}
         />

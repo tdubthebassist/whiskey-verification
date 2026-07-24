@@ -11,10 +11,11 @@ interface DashboardProps {
   onEdit: (whiskey: Whiskey) => void;
   onSettings: () => void;
   onPricing: () => void;
+  onInventory: () => void;
   onLogout: () => void;
 }
 
-export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, onLogout }: DashboardProps) {
+export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, onInventory, onLogout }: DashboardProps) {
   const [whiskeys, setWhiskeys] = useState<Whiskey[]>([]);
   const [query, setQuery] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -98,6 +99,7 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, o
         </div>
         <div style={styles.headerRight}>
           <button style={styles.settingsBtn} onClick={onPricing}>가격 공식</button>
+          <button style={styles.settingsBtn} onClick={onInventory}>재고 관리</button>
           <button style={styles.settingsBtn} onClick={onSettings}>PIN 설정</button>
           <button style={styles.backBtn} onClick={handleBack}>메뉴로 돌아가기</button>
         </div>

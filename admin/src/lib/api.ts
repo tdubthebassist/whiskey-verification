@@ -113,3 +113,15 @@ export async function identifyBottle(
 }> {
   return callEdgeFunction('identify-bottle', { pin, photo: photoBase64 });
 }
+
+export async function scanInventory(
+  pin: string,
+  photoBase64: string,
+  whiskeyId: number,
+): Promise<{ whiskey_id: number; stock_percent: number; confidence: number }> {
+  return callEdgeFunction('scan-inventory', {
+    pin,
+    photo: photoBase64,
+    whiskey_id: whiskeyId,
+  });
+}
