@@ -1,5 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import {
+  type ImageInput,
+  parseImageInput,
+  parseJsonObject,
+  requestAnthropicText,
+  requestOpenAIText,
+  withProviderFallback,
+} from '../_shared/ai.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
@@ -31,73 +39,14 @@ async function hashPin(pin: string): Promise<string> {
     .join('');
 }
 
-async function identifyWithClaude(photo: string): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: photo },
-            },
-            { type: 'text', text: PROMPT },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Claude API: ${err}`);
-  }
-
-  const result = await response.json();
-  return result.content[0]?.text || '';
+async function identifyWithClaude(image: ImageInput): Promise<Record<string, unknown>> {
+  const text = await requestAnthropicText(ANTHROPIC_API_KEY, PROMPT, 2048, image);
+  return parseJsonObject(text, 'Bottle identification');
 }
 
-async function identifyWithOpenAI(photo: string): Promise<string> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${photo}` },
-            },
-            { type: 'text', text: PROMPT },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI API: ${err}`);
-  }
-
-  const result = await response.json();
-  return result.choices[0]?.message?.content || '';
+async function identifyWithOpenAI(image: ImageInput): Promise<Record<string, unknown>> {
+  const text = await requestOpenAIText(OPENAI_API_KEY, PROMPT, 2048, image);
+  return parseJsonObject(text, 'Bottle identification');
 }
 
 serve(async (req) => {
@@ -107,6 +56,23 @@ serve(async (req) => {
 
   try {
     const { pin, photo } = await req.json();
+
+    if (typeof pin !== 'string' || typeof photo !== 'string' || !photo) {
+      return new Response(JSON.stringify({ error: 'Invalid request' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let image: ImageInput;
+    try {
+      image = parseImageInput(photo);
+    } catch (error) {
+      return new Response(JSON.stringify({ error: (error as Error).message }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Validate PIN
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -123,35 +89,19 @@ serve(async (req) => {
       });
     }
 
-    // Try Claude first, fall back to OpenAI
-    let text = '';
-    try {
-      if (ANTHROPIC_API_KEY) {
-        text = await identifyWithClaude(photo);
-      } else {
-        throw new Error('No Anthropic key');
-      }
-    } catch (claudeErr) {
-      console.warn('Claude failed, trying OpenAI:', (claudeErr as Error).message);
-      if (OPENAI_API_KEY) {
-        text = await identifyWithOpenAI(photo);
-      } else {
-        throw new Error('Both AI providers unavailable. Claude: ' + (claudeErr as Error).message);
-      }
-    }
-
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Could not parse identification result');
-    }
-
-    const identification = JSON.parse(jsonMatch[0]);
+    const identification = await withProviderFallback({
+      operation: 'Bottle identification',
+      anthropicApiKey: ANTHROPIC_API_KEY,
+      openAIApiKey: OPENAI_API_KEY,
+      anthropic: () => identifyWithClaude(image),
+      openAI: () => identifyWithOpenAI(image),
+    });
 
     return new Response(JSON.stringify(identification), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    console.error('identify-bottle failed', error);
     return new Response(
       JSON.stringify({ error: (error as Error).message }),
       {

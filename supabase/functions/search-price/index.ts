@@ -1,5 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import {
+  parseJsonObject,
+  requestAnthropicText,
+  requestOpenAIText,
+  withProviderFallback,
+} from '../_shared/ai.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
@@ -118,66 +124,24 @@ JSON 형식으로만 답변해주세요 (마크다운 없이):
 주의: 실제 한국 시장에서 판매되는 합리적인 가격대를 제시해주세요.`;
 }
 
-async function askClaude(prompt: string): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Claude API: ${err}`);
-  }
-
-  const result = await response.json();
-  return result.content[0]?.text || '';
+async function askClaude(prompt: string): Promise<Record<string, unknown>> {
+  const text = await requestAnthropicText(ANTHROPIC_API_KEY, prompt, 2048);
+  return parseJsonObject(text, 'Price search');
 }
 
-async function askOpenAI(prompt: string): Promise<string> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI API: ${err}`);
-  }
-
-  const result = await response.json();
-  return result.choices[0]?.message?.content || '';
+async function askOpenAI(prompt: string): Promise<Record<string, unknown>> {
+  const text = await requestOpenAIText(OPENAI_API_KEY, prompt, 2048);
+  return parseJsonObject(text, 'Price search');
 }
 
-async function askAI(prompt: string): Promise<string> {
-  try {
-    if (ANTHROPIC_API_KEY) {
-      return await askClaude(prompt);
-    }
-    throw new Error('No Anthropic key');
-  } catch (claudeErr) {
-    console.warn('Claude failed, trying OpenAI:', (claudeErr as Error).message);
-    if (OPENAI_API_KEY) {
-      return await askOpenAI(prompt);
-    }
-    throw new Error('Both AI providers unavailable. Claude: ' + (claudeErr as Error).message);
-  }
+async function askAI(prompt: string): Promise<Record<string, unknown>> {
+  return await withProviderFallback({
+    operation: 'Price search',
+    anthropicApiKey: ANTHROPIC_API_KEY,
+    openAIApiKey: OPENAI_API_KEY,
+    anthropic: () => askClaude(prompt),
+    openAI: () => askOpenAI(prompt),
+  });
 }
 
 serve(async (req) => {
@@ -241,28 +205,16 @@ serve(async (req) => {
       prompt = buildEstimationPrompt(whiskey);
     }
 
-    const text = await askAI(prompt);
+    const parsed = await askAI(prompt);
+    const prices = Array.isArray(parsed.prices)
+      ? (parsed.prices as PriceResult[]).sort((a, b) => a.price - b.price)
+      : [];
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return new Response(
-        JSON.stringify({ prices: [], method: searchMethod }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    // Sort by price (lowest first) and add method info
-    if (parsed.prices && Array.isArray(parsed.prices)) {
-      parsed.prices.sort((a: PriceResult, b: PriceResult) => a.price - b.price);
-    }
-    parsed.method = searchMethod;
-
-    return new Response(JSON.stringify(parsed), {
+    return new Response(JSON.stringify({ ...parsed, prices, method: searchMethod }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    console.error('search-price failed', error);
     return new Response(
       JSON.stringify({ error: (error as Error).message, prices: [], method: 'error' }),
       {

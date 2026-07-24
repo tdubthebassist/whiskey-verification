@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { upsertWhiskey, identifyBottle, searchPrice } from '../lib/api';
+import { readImageAsDataUrl } from '../lib/image';
 import { calculateGlassPrice, calculateBottlePrice, normalizePricingConfig } from '../lib/pricing';
 import { REFERENCE_WHISKEYS, searchWhiskeys } from '../data/reference-whiskeys';
 import PriceCalculator from './PriceCalculator';
@@ -102,16 +103,8 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
 
     setPhotoLoading(true);
     try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
-        };
-        reader.readAsDataURL(file);
-      });
-
-      const result = await identifyBottle(pin, base64);
+      const photo = await readImageAsDataUrl(file);
+      const result = await identifyBottle(pin, photo);
       setBrand(result.brand || '');
       setExpression(result.expression || '');
       setRegion(result.region || 'world');
@@ -269,7 +262,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
             <label style={styles.photoLabel}>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 capture="environment"
                 onChange={handlePhoto}
                 style={{ display: 'none' }}

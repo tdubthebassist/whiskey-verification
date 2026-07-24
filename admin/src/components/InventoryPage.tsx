@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { scanInventory } from '../lib/api';
+import { readImageAsDataUrl } from '../lib/image';
 import type { Whiskey } from '../types';
 
 interface InventoryPageProps {
@@ -57,18 +58,8 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
     setScanError(null);
 
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          // strip data URL prefix to get pure base64
-          resolve(result.split(',')[1] ?? result);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const result = await scanInventory(pin, base64, w.id);
+      const photo = await readImageAsDataUrl(file);
+      const result = await scanInventory(pin, photo, w.id);
       setWhiskeys((prev) =>
         prev.map((item) =>
           item.id === result.whiskey_id
@@ -174,7 +165,7 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
                 <input
                   ref={(el) => { fileInputRefs.current[w.id] = el; }}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
                   capture="environment"
                   style={{ display: 'none' }}
                   onChange={(e) => handleFileChange(w, e)}

@@ -1,5 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import {
+  type ImageInput,
+  parseImageInput,
+  parseJsonObject,
+  requestAnthropicText,
+  requestOpenAIText,
+  withProviderFallback,
+} from '../_shared/ai.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
@@ -35,73 +43,38 @@ async function hashPin(pin: string): Promise<string> {
     .join('');
 }
 
-async function scanWithClaude(photo: string): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 256,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: photo },
-            },
-            { type: 'text', text: PROMPT },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Claude API: ${err}`);
-  }
-
-  const result = await response.json();
-  return result.content[0]?.text || '';
+interface ScanResult {
+  stockPercent: number;
+  confidence: number | null;
 }
 
-async function scanWithOpenAI(photo: string): Promise<string> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 256,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${photo}` },
-            },
-            { type: 'text', text: PROMPT },
-          ],
-        },
-      ],
-    }),
-  });
+function parseScanResult(text: string): ScanResult {
+  const parsed = parseJsonObject(text, 'Inventory scan');
+  const stockPercent = Number(parsed.stock_percent);
+  const confidence = Number(parsed.confidence);
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI API: ${err}`);
+  if (!Number.isFinite(stockPercent)) {
+    throw new Error('Inventory scan returned an invalid stock percentage');
   }
 
-  const result = await response.json();
-  return result.choices[0]?.message?.content || '';
+  return {
+    stockPercent: Math.min(100, Math.max(0, Math.round(stockPercent))),
+    confidence: Number.isFinite(confidence)
+      ? Math.min(1, Math.max(0, confidence))
+      : null,
+  };
+}
+
+async function scanWithClaude(image: ImageInput): Promise<ScanResult> {
+  return parseScanResult(
+    await requestAnthropicText(ANTHROPIC_API_KEY, PROMPT, 512, image),
+  );
+}
+
+async function scanWithOpenAI(image: ImageInput): Promise<ScanResult> {
+  return parseScanResult(
+    await requestOpenAIText(OPENAI_API_KEY, PROMPT, 512, image),
+  );
 }
 
 serve(async (req) => {
@@ -119,6 +92,16 @@ serve(async (req) => {
       || !Number.isInteger(whiskey_id)
     ) {
       return new Response(JSON.stringify({ error: 'Invalid request' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let image: ImageInput;
+    try {
+      image = parseImageInput(photo);
+    } catch (error) {
+      return new Response(JSON.stringify({ error: (error as Error).message }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -154,42 +137,13 @@ serve(async (req) => {
       });
     }
 
-    // Try Claude first, fall back to OpenAI
-    let text = '';
-    try {
-      if (ANTHROPIC_API_KEY) {
-        text = await scanWithClaude(photo);
-      } else {
-        throw new Error('No Anthropic key');
-      }
-    } catch (claudeErr) {
-      console.warn('Claude failed, trying OpenAI:', (claudeErr as Error).message);
-      if (OPENAI_API_KEY) {
-        text = await scanWithOpenAI(photo);
-      } else {
-        throw new Error('Both AI providers unavailable. Claude: ' + (claudeErr as Error).message);
-      }
-    }
-
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Could not parse scan result');
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    const parsedStockPercent = Number(parsed.stock_percent);
-    const parsedConfidence = Number(parsed.confidence);
-
-    if (!Number.isFinite(parsedStockPercent)) {
-      throw new Error('Invalid stock percentage returned by AI provider');
-    }
-
-    // Clamp stock_percent to 0-100
-    const stock_percent = Math.min(100, Math.max(0, Math.round(parsedStockPercent)));
-    const confidence = Number.isFinite(parsedConfidence)
-      ? Math.min(1, Math.max(0, parsedConfidence))
-      : null;
+    const { stockPercent: stock_percent, confidence } = await withProviderFallback({
+      operation: 'Inventory scan',
+      anthropicApiKey: ANTHROPIC_API_KEY,
+      openAIApiKey: OPENAI_API_KEY,
+      anthropic: () => scanWithClaude(image),
+      openAI: () => scanWithOpenAI(image),
+    });
 
     // Atomic dual-write via RPC
     const { error: rpcError } = await supabase.rpc('record_inventory_scan', {
@@ -210,6 +164,7 @@ serve(async (req) => {
       },
     );
   } catch (error) {
+    console.error('scan-inventory failed', error);
     return new Response(
       JSON.stringify({ error: (error as Error).message }),
       {
