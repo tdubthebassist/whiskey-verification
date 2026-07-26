@@ -2,6 +2,12 @@
 
 require('dotenv').config();
 
+// Node < 22 has no global WebSocket; @supabase/supabase-js needs one at client
+// construction. Provide the `ws` polyfill so the CLI runs on Node 20+.
+if (typeof globalThis.WebSocket === 'undefined') {
+  try { globalThis.WebSocket = require('ws'); } catch (_) { /* ws optional */ }
+}
+
 const { createClient } = require('@supabase/supabase-js');
 const { hashPassword } = require('./lib/password.js');
 

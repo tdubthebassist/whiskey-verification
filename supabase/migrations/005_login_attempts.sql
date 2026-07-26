@@ -23,6 +23,12 @@ CREATE INDEX idx_login_attempts_login_time
 -- other role is denied by default (consistent with bars/accounts/sessions).
 ALTER TABLE login_attempts ENABLE ROW LEVEL SECURITY;
 
+-- The login/ function runs as service_role (before any session exists); grant it
+-- explicitly (see 004 §8f). This table's sequence is created here, after 004's
+-- blanket sequence grant, so grant it too.
+GRANT SELECT, INSERT, UPDATE, DELETE ON login_attempts TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE login_attempts_id_seq TO service_role;
+
 -- ============================================================================
 -- DOWN MIGRATION (companion: run manually to roll back 005).
 -- ============================================================================

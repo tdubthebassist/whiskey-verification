@@ -424,6 +424,21 @@ REVOKE EXECUTE ON FUNCTION capture_monthly_inventory_snapshots(UUID, TIMESTAMPTZ
 REVOKE EXECUTE ON FUNCTION capture_monthly_inventory_snapshots(UUID, TIMESTAMPTZ) FROM authenticated;
 GRANT EXECUTE ON FUNCTION capture_monthly_inventory_snapshots(UUID, TIMESTAMPTZ) TO service_role;
 
+-- 8f. Grant table DML to service_role EXPLICITLY. The Edge Function layer runs
+-- as service_role (which bypasses RLS) and MUST read/write these tables. Do not
+-- rely on the platform's implicit default privileges — grant explicitly so the
+-- migration is environment-independent (local, self-hosted, and cloud all work).
+-- RLS deny-all still blocks anon/authenticated; only service_role is granted.
+GRANT SELECT, INSERT, UPDATE, DELETE ON bars                        TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON accounts                    TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON sessions                    TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON whiskeys                    TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON settings                    TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON inventory_logs              TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON inventory_monthly_snapshots TO service_role;
+-- SERIAL/BIGSERIAL PKs need sequence usage for service_role INSERTs.
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
 -- The immutability trigger (inventory_monthly_snapshots_immutable) and
 -- inventory_snapshot_due_date() are intentionally left as-is.
 
