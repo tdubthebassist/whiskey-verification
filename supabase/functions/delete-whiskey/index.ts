@@ -1,59 +1,50 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import {
+  AuthError,
+  authenticate,
+  resolveBarScope,
+  scopedTenantClient,
+} from '../_shared/auth.ts';
+import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
   try {
-    const { pin, id } = await req.json();
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const auth = await authenticate(req, serviceClient);
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('pin_hash')
-      .eq('id', 1)
-      .single();
-
-    if (!settings || (await hashPin(pin)) !== settings.pin_hash) {
-      return new Response(JSON.stringify({ error: 'Invalid PIN' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let body: Record<string, unknown> = {};
+    try {
+      body = await req.clone().json();
+    } catch {
+      // body parsing failure handled by missing id check below
     }
 
-    const { error } = await supabase.from('whiskeys').delete().eq('id', id);
+    const { id, bar_id } = body;
+    const barId = resolveBarScope(auth, bar_id as string | undefined);
+    const sc = scopedTenantClient(serviceClient, barId);
+
+    // scopedTenantClient pre-binds .eq('bar_id', barId); the .eq('id', id) further
+    // narrows to the specific row, preventing cross-bar deletes.
+    const { error } = await sc.from('whiskeys').delete().eq('id', id);
     if (error) throw error;
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
+    return json({ success: true });
+  } catch (err) {
+    const status = err instanceof AuthError ? err.status : 500;
+    return json({ error: (err as Error).message }, status);
   }
 });

@@ -6,6 +6,11 @@ import {
   requestOpenAIText,
   withProviderFallback,
 } from '../_shared/ai.ts';
+import {
+  AuthError,
+  authenticate,
+} from '../_shared/auth.ts';
+import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
@@ -13,26 +18,12 @@ const SERPER_API_KEY = Deno.env.get('SERPER_API_KEY') || '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
 interface PriceResult {
   name: string;
   price: number;
   volume_ml: number | null;
   source: string;
   url?: string;
-}
-
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 // Search Google via Serper API
@@ -145,27 +136,14 @@ async function askAI(prompt: string): Promise<Record<string, unknown>> {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
   try {
-    const { pin, brand, expression } = await req.json();
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await authenticate(req, serviceClient);
 
-    // Validate PIN
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('pin_hash')
-      .eq('id', 1)
-      .single();
-
-    if (!settings || (await hashPin(pin)) !== settings.pin_hash) {
-      return new Response(JSON.stringify({ error: 'Invalid PIN' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const { brand, expression } = await req.json();
 
     const whiskey = `${brand} ${expression}`.trim();
     let prompt: string;
@@ -213,12 +191,13 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ...parsed, prices, method: searchMethod }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error) {
-    console.error('search-price failed', error);
+  } catch (err) {
+    console.error('search-price failed', err);
+    const status = err instanceof AuthError ? err.status : 500;
     return new Response(
-      JSON.stringify({ error: (error as Error).message, prices: [], method: 'error' }),
+      JSON.stringify({ error: (err as Error).message, prices: [], method: 'error' }),
       {
-        status: 500,
+        status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
     );

@@ -8,6 +8,11 @@ import {
   requestOpenAIText,
   withProviderFallback,
 } from '../_shared/ai.ts';
+import {
+  AuthError,
+  authenticate,
+} from '../_shared/auth.ts';
+import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
@@ -25,20 +30,6 @@ const PROMPT = `Identify this whiskey bottle from the label. Extract the followi
   "confidence": number between 0 and 1
 }`;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 async function identifyWithClaude(image: ImageInput): Promise<Record<string, unknown>> {
   const text = await requestAnthropicText(ANTHROPIC_API_KEY, PROMPT, 2048, image);
   return parseJsonObject(text, 'Bottle identification');
@@ -50,14 +41,16 @@ async function identifyWithOpenAI(image: ImageInput): Promise<Record<string, unk
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
   try {
-    const { pin, photo } = await req.json();
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await authenticate(req, serviceClient);
 
-    if (typeof pin !== 'string' || typeof photo !== 'string' || !photo) {
+    const { photo } = await req.json();
+
+    if (typeof photo !== 'string' || !photo) {
       return new Response(JSON.stringify({ error: 'Invalid request' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -74,21 +67,6 @@ serve(async (req) => {
       });
     }
 
-    // Validate PIN
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('pin_hash')
-      .eq('id', 1)
-      .single();
-
-    if (!settings || (await hashPin(pin)) !== settings.pin_hash) {
-      return new Response(JSON.stringify({ error: 'Invalid PIN' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const identification = await withProviderFallback({
       operation: 'Bottle identification',
       anthropicApiKey: ANTHROPIC_API_KEY,
@@ -100,12 +78,13 @@ serve(async (req) => {
     return new Response(JSON.stringify(identification), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error) {
-    console.error('identify-bottle failed', error);
+  } catch (err) {
+    console.error('identify-bottle failed', err);
+    const status = err instanceof AuthError ? err.status : 500;
     return new Response(
-      JSON.stringify({ error: (error as Error).message }),
+      JSON.stringify({ error: (err as Error).message }),
       {
-        status: 500,
+        status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
     );
