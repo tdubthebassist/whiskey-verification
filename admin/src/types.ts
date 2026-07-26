@@ -1,5 +1,6 @@
 export interface Whiskey {
   id: number;
+  bar_id: string;
   brand: string;
   expression: string;
   region: string;
@@ -31,8 +32,7 @@ export interface WhiskeyInput {
 }
 
 export interface Settings {
-  id: number;
-  pin_hash: string;
+  bar_id: string;
   pour_size_ml: number;
   markup_multiplier: number;
   margin_pct: number;
@@ -77,6 +77,7 @@ export interface ReferenceWhiskey {
 
 export interface InventoryLog {
   id: number;
+  bar_id: string;
   whiskey_id: number;
   stock_percent: number;
   scanned_at: string;
@@ -149,7 +150,7 @@ export interface BulkUploadRow {
   glass_price: number;
   bottle_price: number;
   bottle_volume_ml: number;
-  status: 'pending' | 'enriched' | 'duplicate' | 'error';
+  status: 'pending' | 'enriched' | 'duplicate' | 'error' | 'registered';
   error?: string;
   enrichSource?: 'reference' | 'web' | 'ai_notes_only' | 'default';
   factDefaulted?: boolean;
@@ -161,6 +162,29 @@ export interface EnrichmentResult {
   age: number | null;
   notes: string;
   source: 'reference' | 'web' | 'ai_notes_only';
+}
+
+export type Role = 'owner' | 'bar';
+
+export interface Bar {
+  id: string;
+  name: string;
+  slug: string;
+  created_at?: string;
+}
+
+export interface BarSummary {
+  bar_id: string;
+  name: string;
+  whiskey_count: number;
+  last_scan_date: string | null;
+}
+
+export interface Session {
+  token: string;
+  role: Role;
+  barId: string | null;
+  barName: string | null;
 }
 
 export const REGIONS = [

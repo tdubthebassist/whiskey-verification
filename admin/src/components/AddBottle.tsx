@@ -1,15 +1,14 @@
 import { useState, useMemo, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { upsertWhiskey, identifyBottle, searchPrice } from '../lib/api';
+import { upsertWhiskey, identifyBottle, searchPrice, getSettings, checkDuplicateWhiskeys } from '../lib/api';
 import { readImageAsDataUrl } from '../lib/image';
 import { calculateGlassPrice, calculateBottlePrice, normalizePricingConfig } from '../lib/pricing';
 import { REFERENCE_WHISKEYS, searchWhiskeys } from '../data/reference-whiskeys';
 import PriceCalculator from './PriceCalculator';
-import type { Whiskey, WhiskeyInput, PricingConfig, Settings, ReferenceWhiskey } from '../types';
+import type { Whiskey, WhiskeyInput, PricingConfig, ReferenceWhiskey } from '../types';
 import { REGIONS } from '../types';
 
 interface AddBottleProps {
-  pin: string;
+  activeBarId?: string;
   editing?: Whiskey | null;
   onDone: () => void;
   onCancel: () => void;
@@ -17,7 +16,7 @@ interface AddBottleProps {
 
 type Step = 'identify' | 'cost' | 'review' | 'edit';
 
-export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleProps) {
+export default function AddBottle({ activeBarId, editing, onDone, onCancel }: AddBottleProps) {
   const [step, setStep] = useState<Step>(editing ? 'edit' : 'identify');
 
   // Form state
@@ -49,17 +48,17 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    supabase.from('settings').select('*').eq('id', 1).single().then(({ data }) => {
-      if (data) {
-        setConfig(normalizePricingConfig({
-          pourSizeMl: (data as Settings).pour_size_ml,
-          markupMultiplier: (data as Settings).markup_multiplier,
-          marginPct: (data as Settings).margin_pct,
-          roundingUnit: (data as Settings).rounding_unit,
-        }));
-      }
+    getSettings(activeBarId).then((data) => {
+      setConfig(normalizePricingConfig({
+        pourSizeMl: data.pour_size_ml,
+        markupMultiplier: data.markup_multiplier,
+        marginPct: data.margin_pct,
+        roundingUnit: data.rounding_unit,
+      }));
+    }).catch(() => {
+      // Keep the default pricing config on failure.
     });
-  }, []);
+  }, [activeBarId]);
 
   // Search results
   const searchResults = useMemo(() => {
@@ -81,7 +80,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
     // Auto-search price after selection
     setPriceSearching(true);
     try {
-      const priceResult = await searchPrice(pin, w.brand, w.expression || '');
+      const priceResult = await searchPrice(w.brand, w.expression || '', activeBarId);
       if (priceResult.prices?.length > 0) {
         setPriceResults(priceResult.prices);
         // Auto-fill with lowest price
@@ -104,7 +103,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
     setPhotoLoading(true);
     try {
       const photo = await readImageAsDataUrl(file);
-      const result = await identifyBottle(pin, photo);
+      const result = await identifyBottle(photo, activeBarId);
       setBrand(result.brand || '');
       setExpression(result.expression || '');
       setRegion(result.region || 'world');
@@ -117,7 +116,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
       if (result.brand) {
         setPriceSearching(true);
         try {
-          const priceResult = await searchPrice(pin, result.brand, result.expression || '');
+          const priceResult = await searchPrice(result.brand, result.expression || '', activeBarId);
           if (priceResult.prices?.length > 0) {
             setPriceResults(priceResult.prices);
             // Auto-fill with lowest price
@@ -142,7 +141,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
     setPriceSearching(true);
     setPriceResults([]);
     try {
-      const result = await searchPrice(pin, brand, expression);
+      const result = await searchPrice(brand, expression, activeBarId);
       setPriceResults(result.prices || []);
       if (!result.prices?.length) {
         alert('검색 결과가 없습니다.');
@@ -167,13 +166,11 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
 
     // Duplicate check (only for new whiskeys, not edits)
     if (!editing) {
-      const { data: existing } = await supabase
-        .from('whiskeys')
-        .select('id, brand, expression')
-        .eq('brand', brand.trim())
-        .eq('expression', expression.trim());
-
-      if (existing && existing.length > 0) {
+      const duplicates = await checkDuplicateWhiskeys(
+        [{ brand: brand.trim(), expression: expression.trim() }],
+        activeBarId,
+      );
+      if (duplicates.size > 0) {
         if (!confirm(`"${(brand + ' ' + expression).trim()}"은(는) 이미 등록되어 있습니다.\n그래도 추가하시겠습니까?`)) {
           return;
         }
@@ -202,7 +199,7 @@ export default function AddBottle({ pin, editing, onDone, onCancel }: AddBottleP
         bottle_volume_ml: bottleVolume,
       };
 
-      await upsertWhiskey(pin, input, editing?.id);
+      await upsertWhiskey(input, editing?.id, activeBarId);
       onDone();
     } catch (err) {
       alert('저장 실패: ' + (err as Error).message);
