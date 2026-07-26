@@ -3,24 +3,21 @@ import type { CSSProperties } from 'react';
 import { captureInventorySnapshots, getSettings, updateSettings } from '../lib/api';
 
 interface SettingsProps {
-  pin: string;
+  activeBarId?: string;
   onBack: () => void;
 }
 
-const ERROR_MESSAGE_MARKERS = ['실패', '일치', '4자리', '입력', '사이', '로딩'];
+const ERROR_MESSAGE_MARKERS = ['실패', '입력', '사이', '로딩'];
 
-export default function Settings({ pin, onBack }: SettingsProps) {
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
+export default function Settings({ activeBarId, onBack }: SettingsProps) {
   const [snapshotDay, setSnapshotDay] = useState<number | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
-  const [savingPin, setSavingPin] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    getSettings()
+    getSettings(activeBarId)
       .then((settings) => {
         setSnapshotDay(settings.inventory_snapshot_day);
       })
@@ -28,7 +25,7 @@ export default function Settings({ pin, onBack }: SettingsProps) {
         setMessage('설정 로딩 실패: ' + (err as Error).message);
       })
       .finally(() => setSettingsLoading(false));
-  }, []);
+  }, [activeBarId]);
 
   const validateSnapshotDay = () => {
     if (snapshotDay === null) {
@@ -41,41 +38,13 @@ export default function Settings({ pin, onBack }: SettingsProps) {
     return true;
   };
 
-  const handlePinSave = async () => {
-    if (!newPin) {
-      setMessage('변경할 PIN을 입력해주세요.');
-      return;
-    }
-    if (newPin.length !== 4) {
-      setMessage('PIN은 4자리여야 합니다.');
-      return;
-    }
-    if (newPin !== confirmPin) {
-      setMessage('PIN이 일치하지 않습니다.');
-      return;
-    }
-
-    setSavingPin(true);
-    setMessage('');
-    try {
-      await updateSettings(pin, {}, newPin);
-      setMessage('PIN이 변경되었습니다.');
-      setNewPin('');
-      setConfirmPin('');
-    } catch (err) {
-      setMessage('저장 실패: ' + (err as Error).message);
-    } finally {
-      setSavingPin(false);
-    }
-  };
-
   const handleSnapshotSave = async () => {
     if (!validateSnapshotDay()) return;
 
     setSavingSnapshot(true);
     setMessage('');
     try {
-      await updateSettings(pin, { inventory_snapshot_day: snapshotDay });
+      await updateSettings({ inventory_snapshot_day: snapshotDay }, activeBarId);
       setMessage(snapshotDay === null
         ? '월간 재고 스냅샷이 서울 시간 월말 기준으로 저장되었습니다.'
         : '월간 재고 스냅샷 날짜가 저장되었습니다.');
@@ -90,7 +59,7 @@ export default function Settings({ pin, onBack }: SettingsProps) {
     setCapturing(true);
     setMessage('');
     try {
-      const result = await captureInventorySnapshots(pin);
+      const result = await captureInventorySnapshots(activeBarId);
       const count = result.inserted ?? result.captured ?? 0;
       setMessage(`재고 스냅샷을 생성했습니다. 신규 ${count}건, 건너뜀 ${result.skipped ?? 0}건.`);
     } catch (err) {
@@ -106,42 +75,10 @@ export default function Settings({ pin, onBack }: SettingsProps) {
     <div style={styles.container}>
       <header style={styles.header}>
         <button style={styles.backBtn} onClick={onBack}>&larr; 돌아가기</button>
-        <h2 style={styles.title}>보안 설정 · PIN</h2>
+        <h2 style={styles.title}>설정 · SETTINGS</h2>
       </header>
 
       <div style={styles.body}>
-        <section style={styles.card}>
-          <h3 style={styles.sectionTitle}>PIN 변경</h3>
-
-          <div style={styles.field}>
-            <label style={styles.label}>새 PIN (4자리)</label>
-            <input
-              style={styles.input}
-              type="password"
-              maxLength={4}
-              value={newPin}
-              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="비우면 변경하지 않음"
-            />
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>PIN 확인</label>
-            <input
-              style={styles.input}
-              type="password"
-              maxLength={4}
-              value={confirmPin}
-              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="다시 입력"
-            />
-          </div>
-
-          <button style={styles.inlineBtn} onClick={handlePinSave} disabled={savingPin}>
-            {savingPin ? '저장 중...' : 'PIN 저장'}
-          </button>
-        </section>
-
         <section style={styles.card}>
           <h3 style={styles.sectionTitle}>월간 재고 스냅샷</h3>
 

@@ -26,21 +26,40 @@ serve(async (req) => {
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const auth = await authenticate(req, serviceClient);
 
-    const body = await req.json() as Record<string, unknown>;
-    const { confirm, bar_id } = body;
-
-    if (confirm !== 'DELETE_ALL_WHISKEYS') {
-      return json({ error: 'Invalid confirmation' }, 400);
+    let body: Record<string, unknown> = {};
+    try {
+      body = await req.clone().json();
+    } catch {
+      // Empty or non-JSON body is fine.
     }
 
-    const barId = resolveBarScope(auth, bar_id as string | undefined);
+    const barId = resolveBarScope(auth, body.bar_id as string | undefined);
     const sc = scopedTenantClient(serviceClient, barId);
 
-    // scopedTenantClient pre-binds .eq('bar_id', barId) — deletes only this bar's rows.
-    const { error, count } = await sc.from('whiskeys').delete();
+    // scopedTenantClient.select() already appends .eq('bar_id', barId).
+    // Additional optional filters are chained directly on the returned builder.
+    // deno-lint-ignore no-explicit-any
+    let query: any = sc
+      .from('inventory_logs')
+      .select(
+        'id, whiskey_id, stock_percent, scanned_at, confidence, source, corrected_at, corrected_from_percent, correction_source',
+      );
+
+    if (Number.isInteger(body.whiskey_id)) {
+      query = query.eq('whiskey_id', body.whiskey_id);
+    }
+    if (typeof body.from === 'string') {
+      query = query.gte('scanned_at', body.from);
+    }
+    if (typeof body.to === 'string') {
+      query = query.lte('scanned_at', body.to);
+    }
+
+    const { data, error } = await query.order('scanned_at', { ascending: false });
+
     if (error) throw error;
 
-    return json({ success: true, deleted: count });
+    return json({ logs: data });
   } catch (err) {
     const status = err instanceof AuthError ? err.status : 500;
     return json({ error: (err as Error).message }, status);

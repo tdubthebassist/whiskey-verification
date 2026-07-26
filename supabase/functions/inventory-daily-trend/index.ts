@@ -1,11 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import {
-  AuthError,
-  authenticate,
-  resolveBarScope,
-  scopedTenantClient,
-} from '../_shared/auth.ts';
+import { AuthError, authenticate, resolveBarScope } from '../_shared/auth.ts';
 import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -26,21 +21,26 @@ serve(async (req) => {
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const auth = await authenticate(req, serviceClient);
 
-    const body = await req.json() as Record<string, unknown>;
-    const { confirm, bar_id } = body;
+    // whiskey_id is required — always parse the body.
+    const body = await req.json();
 
-    if (confirm !== 'DELETE_ALL_WHISKEYS') {
-      return json({ error: 'Invalid confirmation' }, 400);
+    const barId = resolveBarScope(auth, body.bar_id as string | undefined);
+
+    const whiskeyId = body.whiskey_id;
+    if (!Number.isInteger(whiskeyId)) {
+      return json({ error: 'whiskey_id must be an integer' }, 400);
     }
 
-    const barId = resolveBarScope(auth, bar_id as string | undefined);
-    const sc = scopedTenantClient(serviceClient, barId);
+    // rpc is NOT wrapped by scopedTenantClient (see auth.ts LIMITS section).
+    // The bar scope is passed explicitly as p_bar_id per plan §5 / migration §8b.
+    const { data, error } = await serviceClient.rpc('get_inventory_daily_trend', {
+      p_bar_id: barId,
+      p_whiskey_id: whiskeyId,
+    });
 
-    // scopedTenantClient pre-binds .eq('bar_id', barId) — deletes only this bar's rows.
-    const { error, count } = await sc.from('whiskeys').delete();
     if (error) throw error;
 
-    return json({ success: true, deleted: count });
+    return json({ trend: data });
   } catch (err) {
     const status = err instanceof AuthError ? err.status : 500;
     return json({ error: (err as Error).message }, status);

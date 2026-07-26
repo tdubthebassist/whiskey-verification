@@ -11,6 +11,13 @@ import {
   type InventoryScanResult,
   parseInventoryScanResult,
 } from '../_shared/inventory_scan.ts';
+import {
+  AuthError,
+  authenticate,
+  resolveBarScope,
+  scopedTenantClient,
+} from '../_shared/auth.ts';
+import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
@@ -37,18 +44,11 @@ Guidelines:
 - Estimate based on the visible liquid level relative to the bottle height
 - If the bottle is sealed/unopened, return 100`;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 async function scanWithClaude(image: ImageInput): Promise<InventoryScanResult> {
@@ -64,63 +64,42 @@ async function scanWithOpenAI(image: ImageInput): Promise<InventoryScanResult> {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
   try {
-    const { pin, photo, whiskey_id } = await req.json();
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const auth = await authenticate(req, serviceClient);
+
+    const body = await req.json() as Record<string, unknown>;
+    const { photo, whiskey_id, bar_id } = body;
 
     if (
-      typeof pin !== 'string'
-      || typeof photo !== 'string'
+      typeof photo !== 'string'
       || photo.length === 0
       || !Number.isInteger(whiskey_id)
     ) {
-      return new Response(JSON.stringify({ error: 'Invalid request' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Invalid request' }, 400);
     }
 
     let image: ImageInput;
     try {
-      image = parseImageInput(photo);
+      image = parseImageInput(photo as string);
     } catch (error) {
-      return new Response(JSON.stringify({ error: (error as Error).message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: (error as Error).message }, 400);
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const barId = resolveBarScope(auth, bar_id as string | undefined);
+    const sc = scopedTenantClient(serviceClient, barId);
 
-    // Validate PIN
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('pin_hash')
-      .eq('id', 1)
-      .single();
-
-    if (!settings || (await hashPin(pin)) !== settings.pin_hash) {
-      return new Response(JSON.stringify({ error: 'Invalid PIN' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Validate whiskey_id exists
-    const { data: whiskey, error: whiskeyError } = await supabase
-      .from('whiskeys')
+    // Validate whiskey_id exists and belongs to this bar
+    const { data: whiskey, error: whiskeyError } = await sc.from('whiskeys')
       .select('id')
       .eq('id', whiskey_id)
       .single();
 
     if (whiskeyError || !whiskey) {
-      return new Response(JSON.stringify({ error: 'Whiskey not found' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Whiskey not found' }, 404);
     }
 
     const scanResult = await withProviderFallback({
@@ -132,14 +111,11 @@ serve(async (req) => {
     });
 
     if (!scanResult.isWhiskeyBottle) {
-      return new Response(JSON.stringify({
+      return json({
         error: 'Image does not appear to show a whiskey bottle. Please try another photo.',
         code: 'not_whiskey_bottle',
         rejection_reason: scanResult.rejectionReason,
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      }, 400);
     }
 
     const stock_percent = scanResult.stockPercent;
@@ -147,8 +123,9 @@ serve(async (req) => {
       throw new Error('Inventory scan returned no stock percentage');
     }
 
-    // Atomic dual-write via RPC
-    const { error: rpcError } = await supabase.rpc('record_inventory_scan', {
+    // Atomic dual-write via RPC; p_bar_id scopes the write to this bar.
+    const { error: rpcError } = await serviceClient.rpc('record_inventory_scan', {
+      p_bar_id: barId,
       p_whiskey_id: whiskey_id,
       p_stock_percent: stock_percent,
       p_confidence: scanResult.confidence,
@@ -159,20 +136,10 @@ serve(async (req) => {
       throw new Error(`Failed to record scan: ${rpcError.message}`);
     }
 
-    return new Response(
-      JSON.stringify({ whiskey_id, stock_percent, confidence: scanResult.confidence }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
-  } catch (error) {
-    console.error('scan-inventory failed', error);
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
+    return json({ whiskey_id, stock_percent, confidence: scanResult.confidence });
+  } catch (err) {
+    console.error('scan-inventory failed', err);
+    const status = err instanceof AuthError ? err.status : 500;
+    return json({ error: (err as Error).message }, status);
   }
 });

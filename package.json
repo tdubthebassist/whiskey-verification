@@ -3,9 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cd admin && npm install && npm run build && cd .. && node scripts/prepare-dist.js",
-    "start": "npx serve dist -l $PORT -s",
-    "dev": "cd admin && npm run dev"
+    "build": "npm run lint:scope && cd admin && npm install && npm run build && cd .. && node scripts/prepare-dist.js",
+    "lint:scope": "node scripts/check-tenant-scope.js",
+    "start": "npx serve dist -l $PORT",
+    "dev": "cd admin && npm run dev",
+    "add-bar": "node scripts/add-bar.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "dotenv": "^16.0.0",
+    "ws": "^8.21.1"
   },
   "engines": {
     "node": ">=20"

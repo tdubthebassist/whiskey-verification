@@ -1,40 +1,34 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { deleteWhiskey, upsertWhiskey } from '../lib/api';
+import { useCallback, useState, useEffect } from 'react';
+import { deleteWhiskey, listWhiskeys, upsertWhiskey } from '../lib/api';
 import { formatKRW } from '../lib/pricing';
 import { MENU_WHISKEYS } from '../data/menu-whiskeys';
 import type { Whiskey } from '../types';
 
 interface DashboardProps {
-  pin: string;
+  activeBarId?: string;
   onAdd: () => void;
   onEdit: (whiskey: Whiskey) => void;
   onSettings: () => void;
   onPricing: () => void;
   onInventory: () => void;
+  onBulkUpload: () => void;
   onLogout: () => void;
 }
 
-export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, onInventory, onLogout }: DashboardProps) {
+export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPricing, onInventory, onBulkUpload, onLogout }: DashboardProps) {
   const [whiskeys, setWhiskeys] = useState<Whiskey[]>([]);
   const [query, setQuery] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
 
+  const loadWhiskeys = useCallback(async () => {
+    const rows = await listWhiskeys(activeBarId);
+    setWhiskeys(rows);
+  }, [activeBarId]);
+
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.from('whiskeys').select('*').order('id');
-      if (data) setWhiskeys(data);
-    };
-    load();
-
-    const channel = supabase
-      .channel('admin-whiskeys')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiskeys' }, () => load())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    void loadWhiskeys();
+  }, [loadWhiskeys]);
 
   const filtered = query.trim()
     ? whiskeys.filter((w) => {
@@ -62,11 +56,12 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, o
       for (let i = 0; i < toImport.length; i += 5) {
         const batch = toImport.slice(i, i + 5);
         const results = await Promise.allSettled(
-          batch.map((w) => upsertWhiskey(pin, w))
+          batch.map((w) => upsertWhiskey(w, undefined, activeBarId))
         );
         results.forEach((r) => { if (r.status === 'fulfilled') success++; else fail++; });
       }
 
+      await loadWhiskeys();
       alert(`완료: ${success}종 등록${fail > 0 ? `, ${fail}종 실패` : ''}`);
     } catch (e) {
       alert('일괄 등록 실패: ' + (e as Error).message);
@@ -78,7 +73,8 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, o
     if (!confirm('이 위스키를 삭제하시겠습니까?')) return;
     setDeleting(id);
     try {
-      await deleteWhiskey(pin, id);
+      await deleteWhiskey(id, activeBarId);
+      await loadWhiskeys();
     } catch (e) {
       alert('삭제 실패: ' + (e as Error).message);
     }
@@ -100,7 +96,7 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, o
         <div style={styles.headerRight}>
           <button style={styles.settingsBtn} onClick={onPricing}>가격 공식</button>
           <button style={styles.settingsBtn} onClick={onInventory}>재고 관리</button>
-          <button style={styles.settingsBtn} onClick={onSettings}>PIN 설정</button>
+          <button style={styles.settingsBtn} onClick={onSettings}>설정</button>
           <button style={styles.backBtn} onClick={handleBack}>메뉴로 돌아가기</button>
         </div>
       </header>
@@ -124,6 +120,7 @@ export default function Dashboard({ pin, onAdd, onEdit, onSettings, onPricing, o
         >
           {importing ? '등록 중...' : `메뉴 일괄 등록 (${MENU_WHISKEYS.length}종)`}
         </button>
+        <button style={styles.importBtn} onClick={onBulkUpload}>CSV/엑셀 업로드</button>
         <button style={styles.addBtn} onClick={onAdd}>+ 새 위스키 추가</button>
       </div>
 

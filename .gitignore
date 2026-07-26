@@ -7,3 +7,4 @@ admin/dist/
 admin/.env
 *.zip
 Bar Backroom-handoff/
+.DS_Store

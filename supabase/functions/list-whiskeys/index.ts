@@ -26,21 +26,23 @@ serve(async (req) => {
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const auth = await authenticate(req, serviceClient);
 
-    const body = await req.json() as Record<string, unknown>;
-    const { confirm, bar_id } = body;
-
-    if (confirm !== 'DELETE_ALL_WHISKEYS') {
-      return json({ error: 'Invalid confirmation' }, 400);
+    let body: Record<string, unknown> = {};
+    try {
+      body = await req.clone().json();
+    } catch {
+      // Empty or non-JSON body is fine for a read endpoint.
     }
 
-    const barId = resolveBarScope(auth, bar_id as string | undefined);
+    const barId = resolveBarScope(auth, body.bar_id as string | undefined);
     const sc = scopedTenantClient(serviceClient, barId);
 
-    // scopedTenantClient pre-binds .eq('bar_id', barId) — deletes only this bar's rows.
-    const { error, count } = await sc.from('whiskeys').delete();
+    const { data, error } = await sc.from('whiskeys').select(
+      'id, brand, expression, region, abv, age, notes, glass_price, bottle_price, cost_price, photo_url, bottle_volume_ml, created_at, updated_at, stock_percent',
+    );
+
     if (error) throw error;
 
-    return json({ success: true, deleted: count });
+    return json({ whiskeys: data });
   } catch (err) {
     const status = err instanceof AuthError ? err.status : 500;
     return json({ error: (err as Error).message }, status);

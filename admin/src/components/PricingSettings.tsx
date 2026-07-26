@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { updateSettings } from '../lib/api';
+import { getSettings, updateSettings } from '../lib/api';
 import { DEFAULT_CONFIG, normalizePricingConfig } from '../lib/pricing';
 import type { Settings as SettingsType } from '../types';
 
 interface PricingSettingsProps {
-  pin: string;
+  activeBarId?: string;
   onBack: () => void;
 }
 
-export default function PricingSettings({ pin, onBack }: PricingSettingsProps) {
+export default function PricingSettings({ activeBarId, onBack }: PricingSettingsProps) {
   const [pourSize, setPourSize] = useState(DEFAULT_CONFIG.pourSizeMl);
   const [multiplier, setMultiplier] = useState(DEFAULT_CONFIG.markupMultiplier);
   const [marginPct, setMarginPct] = useState(DEFAULT_CONFIG.marginPct);
@@ -28,14 +27,8 @@ export default function PricingSettings({ pin, onBack }: PricingSettingsProps) {
   );
 
   useEffect(() => {
-    supabase
-      .from('settings')
-      .select('*')
-      .eq('id', 1)
-      .single()
-      .then(({ data }) => {
-        if (!data) return;
-        const s = data as SettingsType;
+    getSettings(activeBarId)
+      .then((s) => {
         const next = normalizePricingConfig({
           pourSizeMl: s.pour_size_ml,
           markupMultiplier: s.markup_multiplier,
@@ -46,8 +39,11 @@ export default function PricingSettings({ pin, onBack }: PricingSettingsProps) {
         setMultiplier(next.markupMultiplier);
         setMarginPct(next.marginPct);
         setRoundingUnit(next.roundingUnit);
+      })
+      .catch(() => {
+        // Keep the default config on load failure.
       });
-  }, []);
+  }, [activeBarId]);
 
   const handleSave = async () => {
     if (pourSize <= 0 || multiplier <= 0 || marginPct < 0 || roundingUnit <= 0) {
@@ -59,13 +55,13 @@ export default function PricingSettings({ pin, onBack }: PricingSettingsProps) {
     setMessage('');
     try {
       await updateSettings(
-        pin,
         {
           pour_size_ml: config.pourSizeMl,
           markup_multiplier: config.markupMultiplier,
           margin_pct: config.marginPct,
           rounding_unit: config.roundingUnit,
         } as Partial<SettingsType>,
+        activeBarId,
       );
       setMessage('가격 계산 변수가 저장되었습니다.');
     } catch (err) {

@@ -1,13 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import {
+  AuthError,
+  authenticate,
+  resolveBarScope,
+} from '../_shared/auth.ts';
+import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
 
 interface InventoryCorrectionRpcRow {
   whiskey_id: number;
@@ -22,15 +23,6 @@ interface InventoryCorrectionRpcRow {
   correction_source: string | null;
 }
 
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -39,38 +31,32 @@ function json(body: Record<string, unknown>, status = 200): Response {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
   try {
-    const { pin, log_id, whiskey_id, stock_percent } = await req.json();
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const auth = await authenticate(req, serviceClient);
+
+    const body = await req.json() as Record<string, unknown>;
+    const { log_id, whiskey_id, stock_percent, bar_id } = body;
 
     if (
-      typeof pin !== 'string'
-      || !Number.isInteger(log_id)
+      !Number.isInteger(log_id)
       || !Number.isInteger(whiskey_id)
       || !Number.isInteger(stock_percent)
-      || stock_percent < 0
-      || stock_percent > 100
+      || (stock_percent as number) < 0
+      || (stock_percent as number) > 100
     ) {
       return json({ error: 'Invalid request' }, 400);
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const barId = resolveBarScope(auth, bar_id as string | undefined);
 
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('pin_hash')
-      .eq('id', 1)
-      .single();
-
-    if (!settings || (await hashPin(pin)) !== settings.pin_hash) {
-      return json({ error: 'Invalid PIN' }, 401);
-    }
-
-    const { data, error } = await supabase
+    // RPC is not a table-level call so we pass p_bar_id explicitly.
+    const { data, error } = await serviceClient
       .rpc('overwrite_inventory_log', {
+        p_bar_id: barId,
         p_log_id: log_id,
         p_whiskey_id: whiskey_id,
         p_stock_percent: stock_percent,
@@ -102,8 +88,9 @@ serve(async (req) => {
         correction_source: row.correction_source,
       },
     });
-  } catch (error) {
-    console.error('correct-inventory-log failed', error);
-    return json({ error: (error as Error).message }, 500);
+  } catch (err) {
+    console.error('correct-inventory-log failed', err);
+    const status = err instanceof AuthError ? err.status : 500;
+    return json({ error: (err as Error).message }, status);
   }
 });

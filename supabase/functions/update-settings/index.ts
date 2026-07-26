@@ -1,13 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import {
+  AuthError,
+  authenticate,
+  resolveBarScope,
+  scopedTenantClient,
+} from '../_shared/auth.ts';
+import { corsHeaders, handlePreflight } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
 
 const MUTABLE_SETTING_KEYS = new Set([
   'pour_size_ml',
@@ -19,13 +21,11 @@ const MUTABLE_SETTING_KEYS = new Set([
 
 class ValidationError extends Error {}
 
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 function buildSettingsPayload(updates: unknown): Record<string, unknown> {
@@ -66,55 +66,37 @@ function buildSettingsPayload(updates: unknown): Record<string, unknown> {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
   try {
-    const { pin, settings: updates, newPin } = await req.json();
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const auth = await authenticate(req, serviceClient);
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { settings: updates, bar_id } = await req.json();
 
-    const { data: current } = await supabase
-      .from('settings')
-      .select('pin_hash')
-      .eq('id', 1)
-      .single();
-
-    if (!current || (await hashPin(pin)) !== current.pin_hash) {
-      return new Response(JSON.stringify({ error: 'Invalid PIN' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const barId = resolveBarScope(auth, bar_id as string | undefined);
+    const sc = scopedTenantClient(serviceClient, barId);
 
     const payload: Record<string, unknown> = {
       ...buildSettingsPayload(updates),
       updated_at: new Date().toISOString(),
     };
 
-    // Handle PIN change
-    if (newPin) {
-      payload.pin_hash = await hashPin(newPin);
-    }
-
-    const { error } = await supabase
-      .from('settings')
-      .update(payload)
-      .eq('id', 1);
+    // UPSERT keyed by bar_id — creates the row on first save if it doesn't exist yet.
+    // scopedTenantClient stamps bar_id onto the row.
+    const { error } = await sc.from('settings')
+      .upsert(payload, { onConflict: 'bar_id' });
 
     if (error) throw error;
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      {
-        status: error instanceof ValidationError ? 400 : 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
+    return json({ success: true });
+  } catch (err) {
+    const status = err instanceof AuthError
+      ? err.status
+      : err instanceof ValidationError
+      ? 400
+      : 500;
+    return json({ error: (err as Error).message }, status);
   }
 });

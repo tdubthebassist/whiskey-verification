@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, CSSProperties, ReactNode } from 'react';
-import { correctInventoryLog, getInventoryDailyTrend, scanInventory } from '../lib/api';
+import { correctInventoryLog, getInventoryDailyTrend, listWhiskeys, scanInventory } from '../lib/api';
 import { readImageAsDataUrl } from '../lib/image';
-import { supabase } from '../lib/supabase';
 import type { InventoryDailyTrendPoint, Whiskey } from '../types';
 
 interface InventoryPageProps {
-  pin: string;
+  activeBarId?: string;
   onBack: () => void;
 }
 
@@ -76,7 +75,7 @@ function buildPath(points: InventoryDailyTrendPoint[]): string {
     .join(' ');
 }
 
-export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
+export default function InventoryPage({ activeBarId, onBack }: InventoryPageProps) {
   const [whiskeys, setWhiskeys] = useState<Whiskey[]>([]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -91,25 +90,15 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
   const [scanError, setScanError] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
+  const loadWhiskeys = useCallback(async () => {
+    const rows = await listWhiskeys(activeBarId);
+    setWhiskeys(rows);
+    setSelectedId((current) => current ?? rows[0]?.id ?? null);
+  }, [activeBarId]);
+
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.from('whiskeys').select('*').order('id');
-      if (!data) return;
-
-      const rows = data as Whiskey[];
-      setWhiskeys(rows);
-      setSelectedId((current) => current ?? rows[0]?.id ?? null);
-    };
-
-    load();
-
-    const channel = supabase
-      .channel('inventory-whiskeys')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiskeys' }, () => load())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    void loadWhiskeys();
+  }, [loadWhiskeys]);
 
   const selectedWhiskey = useMemo(
     () => whiskeys.find((w) => w.id === selectedId) ?? null,
@@ -129,7 +118,7 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
     setTrendLoading(true);
     setTrendError(null);
     try {
-      const rows = await getInventoryDailyTrend(whiskeyId);
+      const rows = await getInventoryDailyTrend(whiskeyId, activeBarId);
       setTrend(rows);
     } catch (err) {
       setTrend([]);
@@ -167,7 +156,7 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
 
     try {
       const photo = await readImageAsDataUrl(file);
-      const result = await scanInventory(pin, photo, w.id);
+      const result = await scanInventory(photo, w.id, activeBarId);
       setWhiskeys((prev) =>
         prev.map((item) =>
           item.id === result.whiskey_id
@@ -204,11 +193,11 @@ export default function InventoryPage({ pin, onBack }: InventoryPageProps) {
     setSavingCorrection(true);
     setCorrectionError(null);
     try {
-      const result = await correctInventoryLog(pin, {
+      const result = await correctInventoryLog({
         whiskey_id: selectedWhiskey.id,
         log_id: editingLogId,
         stock_percent: nextPercent,
-      });
+      }, activeBarId);
 
       setWhiskeys((prev) =>
         prev.map((item) =>

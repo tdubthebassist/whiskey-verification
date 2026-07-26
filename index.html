@@ -362,8 +362,6 @@
 <body>
   <div id="app"></div>
 
-  <!-- Supabase client for real-time menu updates -->
-  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
@@ -829,57 +827,46 @@ function Menu({ show, onBack, whiskeys = [] }) {
 }
 
 /* ---------- supabase data loader ---------- */
+// Reads the bar slug from ?bar=<slug> in the page URL (defaults to 'main' for
+// the first/migrated bar). Calls the service-role-backed public-menu function
+// so the anon key never hits the raw whiskeys table directly (anon SELECT was
+// revoked in migration 004). Polls every 60 s to stay fresh; anon realtime
+// was removed from the whiskeys publication in the same migration.
 function useSupabaseWhiskeys() {
   const [dbWhiskeys, setDbWhiskeys] = useState(null);
 
   useEffect(() => {
-    const url = window.__SUPABASE_URL;
-    const key = window.__SUPABASE_ANON_KEY;
-    if (!url || !key) return; // No Supabase configured, use fallback data
+    var url = window.__SUPABASE_URL;
+    var key = window.__SUPABASE_ANON_KEY;
+    if (!url || !key) return; // No Supabase configured, use hardcoded fallback
 
-    // Initial fetch
-    fetch(url + "/rest/v1/whiskeys?select=*&order=id", {
-      headers: { "apikey": key, "Authorization": "Bearer " + key }
-    })
-    .then(r => r.ok ? r.json() : Promise.reject("fetch failed"))
-    .then(rows => {
-      setDbWhiskeys(rows.map(function(r) {
-        return {
-          id: r.id, brand: r.brand, expr: r.expression,
-          name: (r.brand + " " + r.expression).trim(),
-          region: r.region, abv: r.abv, age: r.age, notes: r.notes,
-          glass: r.glass_price, bottle: r.bottle_price, photo: r.photo_url
-        };
-      }));
-    })
-    .catch(function() { console.warn("Supabase fetch failed, using local data"); });
+    var slug = new URLSearchParams(window.location.search).get("bar") || "main";
+    var fnUrl = url + "/functions/v1/public-menu?bar=" + encodeURIComponent(slug);
 
-    // Real-time subscription for live updates
-    if (window.supabase && window.supabase.createClient) {
-      var client = window.supabase.createClient(url, key);
-      var channel = client.channel("menu-updates")
-        .on("postgres_changes", { event: "*", schema: "public", table: "whiskeys" }, function() {
-          // Re-fetch on any change
-          fetch(url + "/rest/v1/whiskeys?select=*&order=id", {
-            headers: { "apikey": key, "Authorization": "Bearer " + key }
-          })
-          .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
-          .then(function(rows) {
-            setDbWhiskeys(rows.map(function(r) {
-              return {
-                id: r.id, brand: r.brand, expr: r.expression,
-                name: (r.brand + " " + r.expression).trim(),
-                region: r.region, abv: r.abv, age: r.age, notes: r.notes,
-                glass: r.glass_price, bottle: r.bottle_price, photo: r.photo_url
-              };
-            }));
-          })
-          .catch(function() {});
-        })
-        .subscribe();
-
-      return function() { client.removeChannel(channel); };
+    function fetchMenu() {
+      fetch(fnUrl, {
+        headers: { "Authorization": "Bearer " + key, "apikey": key }
+      })
+      .then(function(r) { return r.ok ? r.json() : Promise.reject("public-menu " + r.status); })
+      .then(function(data) {
+        var rows = data.whiskeys || [];
+        setDbWhiskeys(rows.map(function(r) {
+          return {
+            id: r.id, brand: r.brand, expr: r.expression,
+            name: (r.brand + " " + r.expression).trim(),
+            region: r.region, abv: r.abv, age: r.age, notes: r.notes,
+            glass: r.glass_price, bottle: r.bottle_price, photo: r.photo_url
+          };
+        }));
+      })
+      .catch(function(e) { console.warn("public-menu fetch failed, using local data", e); });
     }
+
+    fetchMenu();
+    // Poll every 60 s — replaces the anon realtime subscription that was
+    // removed when whiskeys was dropped from supabase_realtime in 004.
+    var timer = setInterval(fetchMenu, 60000);
+    return function() { clearInterval(timer); };
   }, []);
 
   return dbWhiskeys;
