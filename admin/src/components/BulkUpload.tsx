@@ -26,6 +26,29 @@ const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_UPLOAD_ROWS = 500;
 const REGION_KEYS: ReadonlySet<string> = new Set(REGIONS.map((r) => r.key));
 
+// --- Example template (download) ---
+// Columns match the parser: brand / expression / cost_price are required;
+// bottle_volume_ml is optional (defaults to 700). Region/ABV/notes/prices are
+// filled automatically by enrichment, so they are intentionally left out.
+const TEMPLATE_CSV =
+  'brand,expression,cost_price,bottle_volume_ml\n' +
+  'Glenfiddich,12,120000,700\n' +
+  'Macallan,12 Double Cask,380000,700\n' +
+  'Hibiki,Harmony,600000,700\n';
+
+function downloadTemplate() {
+  // Prepend a UTF-8 BOM so Korean Excel opens the file without garbling.
+  const blob = new Blob(['﻿' + TEMPLATE_CSV], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'whiskey_upload_template.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // --- Column header mapping (accepts common English + Korean variants) ---
 function normalizeKey(k: string): string {
   return k.replace(/\uFEFF/g, '').trim().toLowerCase().replace(/[\s_()]/g, '');
@@ -481,8 +504,12 @@ export default function BulkUpload({ activeBarId, onDone, onCancel }: BulkUpload
             <h3 style={styles.sectionTitle}>파일 선택</h3>
             <p style={styles.helpText}>
               열 이름: <strong>brand</strong>(브랜드/이름), <strong>expression</strong>(표현식),{' '}
-              <strong>cost_price</strong>(원가). CSV 또는 엑셀(.xlsx/.xls) 파일을 지원합니다.
+              <strong>cost_price</strong>(원가). CSV 또는 엑셀(.xlsx/.xls) 파일을 지원합니다.{' '}
+              지역·ABV·가격은 자동으로 채워집니다.
             </p>
+            <button type="button" style={styles.templateBtn} onClick={downloadTemplate}>
+              ⬇ 예시 템플릿 내려받기 (CSV)
+            </button>
             <label style={styles.fileLabel}>
               <input
                 type="file"
@@ -732,7 +759,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: '"Cormorant Garamond", serif', fontSize: 18, fontWeight: 600,
     color: '#cd924a', marginBottom: 16,
   },
-  helpText: { color: '#b8aa90', fontSize: 14, lineHeight: 1.6, marginBottom: 20 },
+  helpText: { color: '#b8aa90', fontSize: 14, lineHeight: 1.6, marginBottom: 14 },
+  templateBtn: {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    background: 'none', border: 'none', padding: 0, marginBottom: 18,
+    color: '#cd924a', fontSize: 14, cursor: 'pointer',
+    fontFamily: '"Nanum Myeongjo", serif', textDecoration: 'underline',
+  },
   fileLabel: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: '18px 20px', background: '#1d1712',

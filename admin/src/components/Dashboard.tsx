@@ -1,7 +1,6 @@
 import { useCallback, useState, useEffect } from 'react';
-import { deleteWhiskey, listWhiskeys, upsertWhiskey } from '../lib/api';
+import { deleteWhiskey, listWhiskeys } from '../lib/api';
 import { formatKRW } from '../lib/pricing';
-import { MENU_WHISKEYS } from '../data/menu-whiskeys';
 import type { Whiskey } from '../types';
 
 interface DashboardProps {
@@ -19,7 +18,6 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
   const [whiskeys, setWhiskeys] = useState<Whiskey[]>([]);
   const [query, setQuery] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
-  const [importing, setImporting] = useState(false);
 
   const loadWhiskeys = useCallback(async () => {
     const rows = await listWhiskeys(activeBarId);
@@ -36,38 +34,6 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
         return w.brand.toLowerCase().includes(q) || w.expression.toLowerCase().includes(q);
       })
     : whiskeys;
-
-  const handleImportMenu = async () => {
-    if (!confirm(`메뉴의 위스키 ${MENU_WHISKEYS.length}종을 일괄 등록하시겠습니까?\n이미 등록된 위스키는 건너뜁니다.`)) return;
-    setImporting(true);
-    try {
-      const existing = new Set(whiskeys.map((w) => `${w.brand}||${w.expression}`));
-      const toImport = MENU_WHISKEYS.filter((w) => !existing.has(`${w.brand}||${w.expression}`));
-
-      if (toImport.length === 0) {
-        alert('모든 메뉴 위스키가 이미 등록되어 있습니다.');
-        setImporting(false);
-        return;
-      }
-
-      let success = 0;
-      let fail = 0;
-      // Import in batches of 5 to avoid overloading
-      for (let i = 0; i < toImport.length; i += 5) {
-        const batch = toImport.slice(i, i + 5);
-        const results = await Promise.allSettled(
-          batch.map((w) => upsertWhiskey(w, undefined, activeBarId))
-        );
-        results.forEach((r) => { if (r.status === 'fulfilled') success++; else fail++; });
-      }
-
-      await loadWhiskeys();
-      alert(`완료: ${success}종 등록${fail > 0 ? `, ${fail}종 실패` : ''}`);
-    } catch (e) {
-      alert('일괄 등록 실패: ' + (e as Error).message);
-    }
-    setImporting(false);
-  };
 
   const handleDelete = async (id: number) => {
     if (!confirm('이 위스키를 삭제하시겠습니까?')) return;
@@ -113,13 +79,6 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
             <span style={styles.clear} onClick={() => setQuery('')}>&times;</span>
           )}
         </div>
-        <button
-          style={{ ...styles.importBtn, opacity: importing ? 0.5 : 1 }}
-          onClick={handleImportMenu}
-          disabled={importing}
-        >
-          {importing ? '등록 중...' : `메뉴 일괄 등록 (${MENU_WHISKEYS.length}종)`}
-        </button>
         <button style={styles.importBtn} onClick={onBulkUpload}>CSV/엑셀 업로드</button>
         <button style={styles.addBtn} onClick={onAdd}>+ 새 위스키 추가</button>
       </div>
