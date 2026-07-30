@@ -3,7 +3,10 @@ import {
   parseJsonObject,
   withProviderFallback,
 } from './ai.ts';
-import { parseInventoryScanResult } from './inventory_scan.ts';
+import {
+  calculateStockPercentFromGeometry,
+  parseInventoryScanResult,
+} from './inventory_scan.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -64,6 +67,9 @@ Deno.test('parseInventoryScanResult parses a whiskey bottle scan', () => {
   assert(result.stockPercent === 72, 'Stock percent was not rounded');
   assert(result.confidence === 0.84, 'Confidence was not preserved');
   assert(result.rejectionReason === null, 'Whiskey bottle should not have a rejection reason');
+  assert(!result.needsMorePhotos, 'Photo retry should default to false');
+  assert(result.photoGuidance === null, 'Photo guidance should default to null');
+  assert(result.geometry === null, 'Missing geometry should remain optional for compatibility');
 });
 
 Deno.test('parseInventoryScanResult clamps numeric stock and confidence', () => {
@@ -76,6 +82,50 @@ Deno.test('parseInventoryScanResult clamps numeric stock and confidence', () => 
 
   assert(result.stockPercent === 100, 'Stock percent was not clamped');
   assert(result.confidence === 1, 'Confidence was not clamped');
+});
+
+Deno.test('parseInventoryScanResult requests another photo instead of returning a guess', () => {
+  const result = parseInventoryScanResult(JSON.stringify({
+    is_whiskey_bottle: true,
+    stock_percent: null,
+    confidence: 0.2,
+    needs_more_photos: true,
+    photo_guidance: 'Show the neck and bottom from a straighter angle.',
+    geometry: null,
+  }));
+
+  assert(result.needsMorePhotos, 'Photo retry request was not preserved');
+  assert(result.stockPercent === null, 'An uncertain scan should not return a stock percentage');
+  assert(result.photoGuidance === 'Show the neck and bottom from a straighter angle.', 'Photo guidance was not preserved');
+});
+
+Deno.test('parseInventoryScanResult calculates stock along the bottle axis', () => {
+  const result = parseInventoryScanResult(JSON.stringify({
+    is_whiskey_bottle: true,
+    stock_percent: 12,
+    confidence: 0.9,
+    geometry: {
+      neck_boundary: { x: 800, y: 150 },
+      bottom_boundary: { x: 200, y: 850 },
+      liquid_level: { x: 350, y: 675 },
+      bottle_angle_degrees: 40.6,
+    },
+  }));
+
+  assert(result.stockPercent === 25, 'Geometry did not override the model height estimate');
+  assert(result.geometry?.neckBoundary.x === 800, 'Neck boundary was not normalized');
+  assert(result.geometry?.bottomBoundary.y === 850, 'Bottom boundary was not normalized');
+});
+
+Deno.test('calculateStockPercentFromGeometry clamps liquid points outside the bottle', () => {
+  const stockPercent = calculateStockPercentFromGeometry({
+    neckBoundary: { x: 500, y: 100 },
+    bottomBoundary: { x: 500, y: 900 },
+    liquidLevel: { x: 500, y: 1200 },
+    bottleAngleDegrees: 0,
+  });
+
+  assert(stockPercent === 0, 'Projected stock did not clamp below the bottle bottom');
 });
 
 Deno.test('parseInventoryScanResult normalizes missing confidence to null', () => {

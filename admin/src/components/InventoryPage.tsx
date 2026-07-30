@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, CSSProperties, ReactNode } from 'react';
-import { correctInventoryLog, getInventoryDailyTrend, listWhiskeys, scanInventory } from '../lib/api';
+import {
+  correctInventoryLog,
+  EdgeFunctionError,
+  getInventoryDailyTrend,
+  listWhiskeys,
+  scanInventory,
+} from '../lib/api';
 import { readImageAsDataUrl } from '../lib/image';
 import type { InventoryDailyTrendPoint, Whiskey } from '../types';
 
@@ -166,7 +172,11 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
       );
       await loadTrend(w.id);
     } catch (err) {
-      setScanError((err as Error).message);
+      if (err instanceof EdgeFunctionError && err.code === 'needs_more_photos') {
+        setScanError(`${err.message} 병 전체의 목과 바닥이 모두 보이도록 다른 각도에서 사진을 한두 장 더 찍은 뒤 다시 시도해 주세요.`);
+      } else {
+        setScanError((err as Error).message);
+      }
     } finally {
       setScanning(null);
       if (fileInputRefs.current[w.id]) {

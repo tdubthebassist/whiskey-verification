@@ -16,6 +16,16 @@ import type {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+export class EdgeFunctionError extends Error {
+  readonly code: string | null;
+
+  constructor(message: string, code: string | null = null) {
+    super(message);
+    this.name = 'EdgeFunctionError';
+    this.code = code;
+  }
+}
+
 // --- Session token storage ---------------------------------------------------
 // api.ts owns the token key so session.ts can import these helpers without a
 // circular dependency (session.ts -> api.ts only).
@@ -55,8 +65,21 @@ async function callEdgeFunction<T>(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Edge function ${fnName} failed: ${err}`);
+    const responseText = await res.text();
+    let message = responseText;
+    let code: string | null = null;
+    try {
+      const payload = JSON.parse(responseText) as { error?: unknown; code?: unknown };
+      if (typeof payload.error === 'string' && payload.error.trim()) {
+        message = payload.error;
+      }
+      if (typeof payload.code === 'string') {
+        code = payload.code;
+      }
+    } catch {
+      // Keep the raw response when an edge function did not return JSON.
+    }
+    throw new EdgeFunctionError(`Edge function ${fnName} failed: ${message}`, code);
   }
 
   return res.json();
