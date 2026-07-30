@@ -35,8 +35,8 @@ export default function OwnerDashboard({
   }, []);
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
+    <div className="admin-owner" style={styles.container}>
+      <div className="admin-owner-header" style={styles.header}>
         <div>
           <h1 style={styles.title}>{barName ?? 'OWNER'}</h1>
           <p style={styles.subtitle}>전체 바 관리</p>
@@ -52,7 +52,7 @@ export default function OwnerDashboard({
         <p style={styles.status}>등록된 바가 없습니다.</p>
       )}
 
-      <div style={styles.grid}>
+      <div className="admin-owner-grid" style={styles.grid}>
         {bars.map((bar) => (
           <button
             key={bar.bar_id}

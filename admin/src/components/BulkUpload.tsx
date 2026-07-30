@@ -492,13 +492,13 @@ export default function BulkUpload({ activeBarId, onDone, onCancel }: BulkUpload
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
+    <div className="admin-page" style={styles.container}>
+      <header className="admin-page-header" style={styles.header}>
         <button style={styles.cancelBtn} onClick={() => { importRunRef.current += 1; onCancel(); }}>&larr; 돌아가기</button>
-        <h2 style={styles.title}>CSV / 엑셀 일괄 업로드</h2>
+        <h2 className="admin-page-title" style={styles.title}>CSV / 엑셀 일괄 업로드</h2>
       </header>
 
-      <div style={styles.body}>
+      <div className="admin-page-body" style={styles.body}>
         {phase === 'upload' && (
           <div style={styles.uploadSection}>
             <h3 style={styles.sectionTitle}>파일 선택</h3>
@@ -524,7 +524,7 @@ export default function BulkUpload({ activeBarId, onDone, onCancel }: BulkUpload
         )}
 
         {phase === 'review' && (
-          <div style={styles.reviewSection}>
+          <div className="admin-form-section" style={styles.reviewSection}>
             {settingsWarning && (
               <div style={styles.warningBanner}>
                 ⚠ 가격 공식 설정을 불러오지 못해 기본값으로 계산했습니다. 등록 후 가격을 확인해주세요.
@@ -536,7 +536,7 @@ export default function BulkUpload({ activeBarId, onDone, onCancel }: BulkUpload
               </div>
             )}
 
-            <div style={styles.summaryBar}>
+            <div className="admin-summary" style={styles.summaryBar}>
               <span style={styles.summaryItem}>신규 <strong style={{ color: '#7fa86b' }}>{summary.neu}</strong></span>
               <span style={styles.summaryItem}>중복 <strong style={{ color: '#837763' }}>{summary.dup}</strong></span>
               <span style={styles.summaryItem}>오류 <strong style={{ color: '#c2603a' }}>{summary.err}</strong></span>
@@ -709,7 +709,7 @@ export default function BulkUpload({ activeBarId, onDone, onCancel }: BulkUpload
               </table>
             </div>
 
-            <div style={styles.footer}>
+            <div className="admin-table-footer" style={styles.footer}>
               <button style={styles.backStepBtn} onClick={() => { importRunRef.current += 1; setEnriching(false); setPhase('upload'); setRows([]); }}>
                 &larr; 다른 파일
               </button>

@@ -37,8 +37,8 @@ export default function LoginScreen({ onSuccess }: LoginScreenProps) {
   };
 
   return (
-    <div style={styles.container}>
-      <form style={styles.card} onSubmit={handleSubmit}>
+    <div className="admin-login" style={styles.container}>
+      <form className="admin-login-card" style={styles.card} onSubmit={handleSubmit}>
         <h2 style={styles.title}>ADMIN</h2>
         <p style={styles.subtitle}>로그인</p>
 

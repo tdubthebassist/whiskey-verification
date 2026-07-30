@@ -53,13 +53,13 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
+    <div className="admin-page" style={styles.container}>
+      <header className="admin-page-header" style={styles.header}>
         <div style={styles.headerLeft}>
-          <h1 style={styles.title}>ADMIN</h1>
+          <h1 className="admin-page-title" style={styles.title}>ADMIN</h1>
           <span style={styles.count}>{whiskeys.length}종</span>
         </div>
-        <div style={styles.headerRight}>
+        <div className="admin-header-actions" style={styles.headerRight}>
           <button style={styles.settingsBtn} onClick={onPricing}>가격 공식</button>
           <button style={styles.settingsBtn} onClick={onInventory}>재고 관리</button>
           <button style={styles.settingsBtn} onClick={onSettings}>설정</button>
@@ -67,8 +67,8 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
         </div>
       </header>
 
-      <div style={styles.toolbar}>
-        <div style={styles.searchBox}>
+      <div className="admin-page-toolbar" style={styles.toolbar}>
+        <div className="admin-search" style={styles.searchBox}>
           <input
             style={styles.searchInput}
             value={query}
@@ -83,8 +83,8 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
         <button style={styles.addBtn} onClick={onAdd}>+ 새 위스키 추가</button>
       </div>
 
-      <div style={styles.list}>
-        <div style={styles.listHeader}>
+      <div className="admin-list" style={styles.list}>
+        <div className="admin-list-header" style={styles.listHeader}>
           <span style={{ ...styles.col, flex: 2 }}>위스키</span>
           <span style={styles.col}>원가</span>
           <span style={styles.col}>잔 가격</span>
@@ -92,21 +92,21 @@ export default function Dashboard({ activeBarId, onAdd, onEdit, onSettings, onPr
         </div>
 
         {filtered.map((w) => (
-          <div key={w.id} style={styles.row}>
-            <div style={{ ...styles.col, flex: 2 }}>
+          <div key={w.id} className="admin-list-row" style={styles.row}>
+            <div className="admin-list-primary" style={{ ...styles.col, flex: 2 }}>
               <span style={styles.brand}>{w.brand}</span>
               {w.expression && <span style={styles.expr}> {w.expression}</span>}
               <div style={styles.meta}>
                 {w.age ? `${w.age}년` : 'NAS'} · {w.abv}% · {w.region}
               </div>
             </div>
-            <span style={styles.col}>
+            <span className="admin-list-data" style={styles.col}>
               {w.cost_price ? `₩${formatKRW(w.cost_price)}` : <span style={styles.na}>미입력</span>}
             </span>
-            <span style={{ ...styles.col, color: '#cd924a', fontWeight: 700 }}>
+            <span className="admin-list-data" style={{ ...styles.col, color: '#cd924a', fontWeight: 700 }}>
               ₩{formatKRW(w.glass_price)}
             </span>
-            <div style={{ ...styles.col, flex: 0.5, display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <div className="admin-list-actions" style={{ ...styles.col, flex: 0.5, display: 'flex', gap: 8, justifyContent: 'center' }}>
               <button style={styles.actionBtn} onClick={() => onEdit(w)}>수정</button>
               <button
                 style={{ ...styles.actionBtn, color: '#c2603a' }}

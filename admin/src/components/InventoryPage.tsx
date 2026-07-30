@@ -266,17 +266,17 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
   }
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
+    <div className="admin-page" style={styles.container}>
+      <header className="admin-page-header" style={styles.header}>
         <div style={styles.headerLeft}>
-          <h1 style={styles.title}>재고 관리</h1>
+          <h1 className="admin-page-title" style={styles.title}>재고 관리</h1>
           <span style={styles.count}>{whiskeys.length}종</span>
         </div>
         <button style={styles.backBtn} onClick={onBack}>← 돌아가기</button>
       </header>
 
-      <div style={styles.toolbar}>
-        <div style={styles.searchBox}>
+      <div className="admin-page-toolbar" style={styles.toolbar}>
+        <div className="admin-search" style={styles.searchBox}>
           <input
             style={styles.searchInput}
             value={query}
@@ -290,15 +290,15 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
       </div>
 
       {scanError && (
-        <div style={styles.errorBanner}>
+        <div className="admin-error-banner" style={styles.errorBanner}>
           스캔 오류: {scanError}
           <span style={styles.errorClose} onClick={() => setScanError(null)}>&times;</span>
         </div>
       )}
 
-      <main style={styles.content}>
-        <section style={styles.list}>
-          <div style={styles.listHeader}>
+      <main className="admin-content-grid" style={styles.content}>
+        <section className="admin-list" style={styles.list}>
+          <div className="admin-list-header" style={styles.listHeader}>
             <span style={{ ...styles.col, flex: 2 }}>위스키</span>
             <span style={{ ...styles.col, flex: 1.5 }}>재고 수준</span>
             <span style={{ ...styles.col, flex: 0.5, textAlign: 'center' }}>스캔</span>
@@ -313,10 +313,11 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
             return (
               <div
                 key={w.id}
+                className="admin-list-row"
                 style={{ ...styles.row, ...(isSelected ? styles.selectedRow : {}) }}
                 onClick={() => selectWhiskey(w.id)}
               >
-                <div style={{ ...styles.col, flex: 2 }}>
+                <div className="admin-list-primary" style={{ ...styles.col, flex: 2 }}>
                   <span style={styles.brand}>{w.brand}</span>
                   {w.expression && <span style={styles.expr}> {w.expression}</span>}
                   <div style={styles.meta}>
@@ -324,7 +325,7 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
                   </div>
                 </div>
 
-                <div style={{ ...styles.col, flex: 1.5 }}>
+                <div className="admin-list-data" style={{ ...styles.col, flex: 1.5 }}>
                   {pct === null ? (
                     <span style={styles.unmeasured}>미측정</span>
                   ) : (
@@ -343,7 +344,7 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
                   )}
                 </div>
 
-                <div style={{ ...styles.col, flex: 0.5, display: 'flex', justifyContent: 'center' }}>
+                <div className="admin-list-actions" style={{ ...styles.col, flex: 0.5, display: 'flex', justifyContent: 'center' }}>
                   <button
                     style={{
                       ...styles.cameraBtn,
@@ -378,7 +379,7 @@ export default function InventoryPage({ activeBarId, onBack }: InventoryPageProp
           )}
         </section>
 
-        <aside style={styles.detail}>
+        <aside className="admin-detail" style={styles.detail}>
           {!selectedWhiskey ? (
             <p style={styles.empty}>기록을 볼 위스키를 선택하세요.</p>
           ) : (

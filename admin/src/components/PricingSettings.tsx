@@ -71,14 +71,14 @@ export default function PricingSettings({ activeBarId, onBack }: PricingSettings
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
+    <div className="admin-page" style={styles.container}>
+      <header className="admin-page-header" style={styles.header}>
         <button style={styles.backBtn} onClick={onBack}>&larr; 돌아가기</button>
-        <h2 style={styles.title}>가격 공식 · PRICING</h2>
+        <h2 className="admin-page-title" style={styles.title}>가격 공식 · PRICING</h2>
       </header>
 
-      <div style={styles.body}>
-        <section style={styles.card}>
+      <div className="admin-page-body" style={styles.body}>
+        <section className="admin-card" style={styles.card}>
           <h3 style={styles.sectionTitle}>계산 변수</h3>
 
           <div style={styles.grid}>

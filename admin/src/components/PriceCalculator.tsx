@@ -33,37 +33,37 @@ export default function PriceCalculator({
   }
 
   return (
-    <div style={styles.container}>
+    <div className="admin-price-calculator" style={styles.container}>
       <h3 style={styles.heading}>가격 계산 · PRICE BREAKDOWN</h3>
 
       <div style={styles.steps}>
-        <div style={styles.step}>
+        <div className="admin-price-step" style={styles.step}>
           <span style={styles.label}>잔 수</span>
-          <span style={styles.value}>
+          <span className="admin-price-value" style={styles.value}>
             {bottleVolumeMl}ml ÷ {safeConfig.pourSizeMl.toFixed(1)}ml ={' '}
             <strong>{result.pourCount.toFixed(1)}</strong> 잔
           </span>
         </div>
 
-        <div style={styles.step}>
+        <div className="admin-price-step" style={styles.step}>
           <span style={styles.label}>잔당 원가</span>
-          <span style={styles.value}>
+          <span className="admin-price-value" style={styles.value}>
             ₩{formatKRW(bottleCost)} ÷ {result.pourCount.toFixed(1)} ={' '}
             <strong>₩{formatKRW(Math.round(result.costPerPour))}</strong>
           </span>
         </div>
 
-        <div style={styles.step}>
+        <div className="admin-price-step" style={styles.step}>
           <span style={styles.label}>기본가 (&times;{safeConfig.markupMultiplier})</span>
-          <span style={styles.value}>
+          <span className="admin-price-value" style={styles.value}>
             ₩{formatKRW(Math.round(result.costPerPour))} × {safeConfig.markupMultiplier} ={' '}
             <strong>₩{formatKRW(Math.round(result.basePrice))}</strong>
           </span>
         </div>
 
-        <div style={styles.step}>
+        <div className="admin-price-step" style={styles.step}>
           <span style={styles.label}>마진 (+{safeConfig.marginPct}%)</span>
-          <span style={styles.value}>
+          <span className="admin-price-value" style={styles.value}>
             ₩{formatKRW(Math.round(result.basePrice))} + {safeConfig.marginPct}% ={' '}
             <strong>₩{formatKRW(Math.round(result.withMargin))}</strong>
           </span>
@@ -71,7 +71,7 @@ export default function PriceCalculator({
 
         <div style={styles.divider} />
 
-        <div style={styles.finalRow}>
+        <div className="admin-price-final-row" style={styles.finalRow}>
           <div style={styles.finalCard}>
             <span style={styles.finalLabel}>잔 · GLASS</span>
             <span style={styles.finalPrice}>

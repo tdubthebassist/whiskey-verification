@@ -72,14 +72,14 @@ export default function Settings({ activeBarId, onBack }: SettingsProps) {
   const isErrorMessage = ERROR_MESSAGE_MARKERS.some((marker) => message.includes(marker));
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
+    <div className="admin-page" style={styles.container}>
+      <header className="admin-page-header" style={styles.header}>
         <button style={styles.backBtn} onClick={onBack}>&larr; 돌아가기</button>
-        <h2 style={styles.title}>설정 · SETTINGS</h2>
+        <h2 className="admin-page-title" style={styles.title}>설정 · SETTINGS</h2>
       </header>
 
-      <div style={styles.body}>
-        <section style={styles.card}>
+      <div className="admin-page-body" style={styles.body}>
+        <section className="admin-card" style={styles.card}>
           <h3 style={styles.sectionTitle}>월간 재고 스냅샷</h3>
 
           <div style={styles.field}>
@@ -107,7 +107,7 @@ export default function Settings({ activeBarId, onBack }: SettingsProps) {
             </span>
           </div>
 
-          <div style={styles.actions}>
+          <div className="admin-settings-actions" style={styles.actions}>
             <button
               style={styles.inlineBtn}
               onClick={handleSnapshotSave}

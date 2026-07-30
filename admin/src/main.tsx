@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import './responsive.css';
 
 // Import Google Fonts (same as customer menu for visual consistency)
 const link = document.createElement('link');

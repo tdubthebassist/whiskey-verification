@@ -208,10 +208,10 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
+    <div className="admin-page" style={styles.container}>
+      <header className="admin-page-header" style={styles.header}>
         <button style={styles.cancelBtn} onClick={onCancel}>&larr; 돌아가기</button>
-        <h2 style={styles.title}>{editing ? '위스키 수정' : '새 위스키 추가'}</h2>
+        <h2 className="admin-page-title" style={styles.title}>{editing ? '위스키 수정' : '새 위스키 추가'}</h2>
         {!editing && (
           <div style={styles.steps}>
             {(['identify', 'cost', 'review'] as Step[]).map((s, i) => (
@@ -225,9 +225,9 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
         )}
       </header>
 
-      <div style={styles.body}>
+      <div className="admin-page-body" style={styles.body}>
         {step === 'identify' && (
-          <div style={styles.section}>
+          <div className="admin-form-section" style={styles.section}>
             <h3 style={styles.sectionTitle}>1. 위스키 찾기</h3>
 
             <div style={{ position: 'relative' }}>
@@ -277,7 +277,7 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
               <span style={styles.orLine} />
             </div>
 
-            <div style={styles.formGrid}>
+            <div className="admin-form-grid" style={styles.formGrid}>
               <div style={styles.field}>
                 <label style={styles.label}>브랜드 *</label>
                 <input style={styles.input} value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Lagavulin" />
@@ -320,7 +320,7 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
         )}
 
         {step === 'cost' && (
-          <div style={styles.section}>
+          <div className="admin-form-section" style={styles.section}>
             <h3 style={styles.sectionTitle}>
               2. 가격 설정 — {brand} {expression}
             </h3>
@@ -386,10 +386,10 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
               config={config}
             />
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-              <button style={styles.backStepBtn} onClick={() => setStep('identify')}>&larr; 이전</button>
+            <div className="admin-step-actions" style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+              <button style={{ ...styles.backStepBtn, flex: 1 }} onClick={() => setStep('identify')}>&larr; 이전</button>
               <button
-                style={{ ...styles.nextBtn, flex: 1, opacity: costPrice > 0 ? 1 : 0.4 }}
+                style={{ ...styles.nextBtn, flex: 1, marginTop: 0, opacity: costPrice > 0 ? 1 : 0.4 }}
                 onClick={() => {
                   if (!costPrice || costPrice <= 0) {
                     alert('구매 가격을 입력해주세요.');
@@ -405,7 +405,7 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
         )}
 
         {step === 'review' && (
-          <div style={styles.section}>
+          <div className="admin-form-section" style={styles.section}>
             <h3 style={styles.sectionTitle}>3. 최종 확인</h3>
 
             <div style={styles.reviewCard}>
@@ -433,8 +433,8 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-              <button style={styles.backStepBtn} onClick={() => setStep('cost')}>&larr; 수정</button>
+            <div className="admin-step-actions" style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+              <button style={{ ...styles.backStepBtn, flex: 1 }} onClick={() => setStep('cost')}>&larr; 수정</button>
               <button
                 style={{ ...styles.saveBtn, flex: 1 }}
                 onClick={handleSave}
@@ -447,10 +447,10 @@ export default function AddBottle({ activeBarId, editing, onDone, onCancel }: Ad
         )}
 
         {step === 'edit' && (
-          <div style={styles.section}>
+          <div className="admin-form-section" style={styles.section}>
             <h3 style={styles.sectionTitle}>위스키 정보 수정</h3>
 
-            <div style={styles.formGrid}>
+            <div className="admin-form-grid" style={styles.formGrid}>
               <div style={styles.field}>
                 <label style={styles.label}>브랜드 *</label>
                 <input style={styles.input} value={brand} onChange={(e) => setBrand(e.target.value)} />
